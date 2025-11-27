@@ -2,17 +2,20 @@ import { useGameStore } from './stores/useGameStore';
 import { GameScene } from './scenes/GameScene';
 import { MainMenu } from './components/ui/MainMenu';
 import { HUD } from './components/ui/HUD';
+import { useKeyboardControls } from './hooks/useKeyboardControls';
 
 function App() {
-  const { isPlaying } = useGameStore();
+  const isPlaying = useGameStore((state) => state.isPlaying);
+
+  // Initialize keyboard listeners
+  useKeyboardControls();
 
   return (
-    <div className="w-full h-screen bg-black overflow-hidden select-none">
-      {!isPlaying && <MainMenu />}
-      {isPlaying && <HUD />}
+    <>
+      {isPlaying ? <HUD /> : <MainMenu />}
       <GameScene />
-    </div>
-  );
+    </>
+  )
 }
 
 export default App;

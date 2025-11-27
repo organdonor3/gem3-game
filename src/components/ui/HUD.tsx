@@ -1,5 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../../stores/useGameStore';
+import { TouchControls } from './TouchControls';
 
 export const HUD: React.FC = () => {
     const { score, isPaused, pauseGame, resumeGame } = useGameStore();
@@ -7,7 +8,7 @@ export const HUD: React.FC = () => {
     if (isPaused) {
         return (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
-                <div className="bg-gray-800 p-8 rounded-xl text-center">
+                <div className="bg-gray-800 p-8 rounded-xl text-center pointer-events-auto">
                     <h2 className="text-3xl text-white font-bold mb-4">PAUSED</h2>
                     <button
                         onClick={resumeGame}
@@ -39,8 +40,13 @@ export const HUD: React.FC = () => {
             </div>
 
             {/* Mobile Controls Hint */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white/50 text-sm">
+            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white/50 text-sm hidden md:block">
                 WASD to Move • SPACE to Jump
+            </div>
+
+            {/* Touch Controls (only visible on touch devices) */}
+            <div className="pointer-events-auto">
+                <TouchControls />
             </div>
         </div>
     );

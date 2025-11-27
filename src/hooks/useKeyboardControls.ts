@@ -1,35 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useInputStore } from '../stores/useInputStore';
 
 export const useKeyboardControls = () => {
-    const [movement, setMovement] = useState({
-        forward: false,
-        backward: false,
-        left: false,
-        right: false,
-        jump: false,
-    });
+    const { setForward, setBackward, setLeft, setRight, setJump } = useInputStore();
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             switch (e.code) {
                 case 'KeyW':
                 case 'ArrowUp':
-                    setMovement((m) => ({ ...m, forward: true }));
+                    setForward(true);
                     break;
                 case 'KeyS':
                 case 'ArrowDown':
-                    setMovement((m) => ({ ...m, backward: true }));
+                    setBackward(true);
                     break;
                 case 'KeyA':
                 case 'ArrowLeft':
-                    setMovement((m) => ({ ...m, left: true }));
+                    setLeft(true);
                     break;
                 case 'KeyD':
                 case 'ArrowRight':
-                    setMovement((m) => ({ ...m, right: true }));
+                    setRight(true);
                     break;
                 case 'Space':
-                    setMovement((m) => ({ ...m, jump: true }));
+                    setJump(true);
                     break;
             }
         };
@@ -38,22 +33,22 @@ export const useKeyboardControls = () => {
             switch (e.code) {
                 case 'KeyW':
                 case 'ArrowUp':
-                    setMovement((m) => ({ ...m, forward: false }));
+                    setForward(false);
                     break;
                 case 'KeyS':
                 case 'ArrowDown':
-                    setMovement((m) => ({ ...m, backward: false }));
+                    setBackward(false);
                     break;
                 case 'KeyA':
                 case 'ArrowLeft':
-                    setMovement((m) => ({ ...m, left: false }));
+                    setLeft(false);
                     break;
                 case 'KeyD':
                 case 'ArrowRight':
-                    setMovement((m) => ({ ...m, right: false }));
+                    setRight(false);
                     break;
                 case 'Space':
-                    setMovement((m) => ({ ...m, jump: false }));
+                    setJump(false);
                     break;
             }
         };
@@ -66,6 +61,4 @@ export const useKeyboardControls = () => {
             window.removeEventListener('keyup', handleKeyUp);
         };
     }, []);
-
-    return movement;
 };

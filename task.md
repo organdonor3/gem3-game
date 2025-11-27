@@ -39,3 +39,59 @@
 - [x] Documentation & Deployment
     - [x] Create README.md with Architecture Overview
     - [x] Create GitHub Actions Workflow (Deploy to Pages)
+
+# Phase 2: Improvements
+- [x] Switch Multiplayer to Playroom Kit
+    - [x] Uninstall Socket.io / Delete Server
+# Game Template Setup
+
+- [x] Initialize Project
+    - [x] Create Vite + React + TS project
+    - [x] Install dependencies (Three, R3F, Drei, Rapier, Zustand, Tailwind, Router)
+    - [x] Configure Tailwind and TypeScript
+- [x] Core Architecture
+    - [x] Set up folder structure
+    - [x] Create Game State Store (Zustand + Persist)
+    - [x] Create Input Manager/Hooks (Keyboard + Touch)
+    - [x] Setup Audio System (Howler + Manager)
+    - [x] Setup Multiplayer Structure (Lobby Store, Connection Hooks, Local Server)
+    - [x] Create Asset Manifest System
+    - [x] Create Game Config System
+    - [x] Configure PWA (manifest.json, service worker)
+    - [x] Setup Vitest for Unit Testing
+- [x] UI Systems
+    - [x] Design Main Menu (with Multiplayer option)
+    - [x] Create Lobby Interface (Room Code, Player List)
+    - [x] Create HUD Overlay
+    - [x] Create Pause/Settings Menu (Audio Controls, Persistence)
+    - [x] Create Loading Screen (Suspense Integration)
+    - [x] Create Error Boundary Component
+    - [x] Implement Scene Transitions/Routing
+- [x] Game Demo Implementation
+    - [x] Create 3D Scene (Lights, Environment, Post-Processing)
+    - [x] Implement Player Controller (Physics-based)
+    - [x] Add Interactive Objects (Collectibles/Obstacles)
+    - [x] Connect Game Logic to UI (Score, Health)
+    - [x] Implement Physics Debug Toggle
+    - [x] Implement Mobile Touch Controls (Joystick)
+- [x] Verification
+    - [x] Verify Build
+    - [x] Verify Unit Tests (npm run test)
+    - [x] Verify Controls and UI flow
+    - [x] Verify Multiplayer Connection (Local)
+    - [x] Verify Persistence (Reload page)
+    - [x] Verify PWA Installation
+- [x] Documentation & Deployment
+    - [x] Create README.md with Architecture Overview
+    - [x] Create GitHub Actions Workflow (Deploy to Pages)
+
+# Phase 2: Improvements
+- [x] Switch Multiplayer to Playroom Kit
+    - [x] Uninstall Socket.io / Delete Server
+    - [x] Install `playroomkit`
+    - [x] Initialize `insertCoin()` in `main.tsx`
+    - [x] Implement `NetworkPlayer` component
+- [x] Implement Mobile Touch Controls
+- [x] Implement Audio System
+- [x] Implement Gameplay Loop (Coins/Score)
+- [x] Implement Game Feel (Camera Shake, Squash & Stretch)

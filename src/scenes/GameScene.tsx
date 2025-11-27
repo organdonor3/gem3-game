@@ -1,8 +1,10 @@
 import { Canvas } from '@react-three/fiber';
 import { Physics, RigidBody } from '@react-three/rapier';
-import { Environment } from '@react-three/drei';
+import { Environment, CameraShake } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { Player } from '../components/game/Player';
+import { NetworkPlayers } from '../components/game/NetworkPlayers';
+import { Coin } from '../components/game/Coin';
 import { GameConfig } from '../config';
 
 export const GameScene = () => {
@@ -45,7 +47,14 @@ export const GameScene = () => {
                     </mesh>
                 </RigidBody>
 
+                {/* Coins */}
+                <Coin position={[0, 1, -5]} />
+                <Coin position={[3, 1, -3]} />
+                <Coin position={[-3, 1, -3]} />
+                <Coin position={[0, 1, 5]} />
+
                 <Player />
+                <NetworkPlayers />
             </Physics>
 
             {/* Post Processing */}
@@ -53,6 +62,18 @@ export const GameScene = () => {
                 <Bloom luminanceThreshold={1} intensity={1.5} />
                 <Vignette eskil={false} offset={0.1} darkness={1.1} />
             </EffectComposer>
+
+            <CameraShake
+                maxYaw={0.05}
+                maxPitch={0.05}
+                maxRoll={0.05}
+                yawFrequency={0.1}
+                pitchFrequency={0.1}
+                rollFrequency={0.1}
+                intensity={0.5}
+                decay={true}
+                decayRate={0.65}
+            />
         </Canvas>
     );
 };

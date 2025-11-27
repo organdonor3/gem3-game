@@ -8,9 +8,11 @@ export const Assets = {
     textures: {
         // floor: '/assets/textures/floor.jpg', // Example
     },
-    audio: {
-        // jump: '/assets/audio/jump.mp3', // Example
-        // backgroundMusic: '/assets/audio/bgm.mp3',
+    Audio: {
+        bgm: './audio/bgm.mp3',
+        jump: './audio/jump.mp3',
+        collect: './audio/collect.mp3',
+        click: './audio/click.mp3',
     },
 };
 

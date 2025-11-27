@@ -41,11 +41,23 @@ export const useGameStore = create<GameState>()(
                 });
             },
             addScore: (points) => set((state) => ({ score: state.score + points })),
-            setVolume: (vol) => set({ volume: vol }),
+            setVolume: (vol) => {
+                set({ volume: vol });
+                import('../systems/AudioManager').then(({ audioManager }) => {
+                    audioManager.setVolume(vol);
+                });
+            },
         }),
         {
             name: 'game-storage', // unique name
             partialize: (state) => ({ highScore: state.highScore, volume: state.volume }), // Only persist these
+            onRehydrateStorage: () => (state) => {
+                if (state) {
+                    import('../systems/AudioManager').then(({ audioManager }) => {
+                        audioManager.setVolume(state.volume);
+                    });
+                }
+            }
         }
     )
 );
