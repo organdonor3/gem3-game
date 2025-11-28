@@ -1,4 +1,3 @@
-import { Canvas } from '@react-three/fiber';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { Environment, CameraShake } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
@@ -9,7 +8,7 @@ import { GameConfig } from '../config';
 
 export const GameScene = () => {
     return (
-        <Canvas shadows camera={{ position: GameConfig.cameraPosition, fov: GameConfig.cameraFov }}>
+        <>
             <color attach="background" args={['#111']} />
 
             {/* Lighting & Environment */}
@@ -74,6 +73,6 @@ export const GameScene = () => {
                 decay={true}
                 decayRate={0.65}
             />
-        </Canvas>
+        </>
     );
 };

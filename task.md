@@ -95,3 +95,27 @@
 - [x] Implement Audio System
 - [x] Implement Gameplay Loop (Coins/Score)
 - [x] Implement Game Feel (Camera Shake, Squash & Stretch)
+
+# Phase 3: Polish & Infrastructure
+- [ ] UI/UX Polish
+    - [x] Install `framer-motion`
+    - [x] Create `PageTransition` component
+    - [x] Implement Settings Menu (Volume, Graphics)
+    - [x] Improve Loading Screen
+- [ ] PWA & Mobile Experience
+    - [x] Add Install Prompt UI
+    - [x] Fix Viewport/Touch behaviors
+- [ ] Developer Experience
+    - [x] Create Debug Panel (Leva/Stats)
+    - [x] Configure Path Aliases
+- [x] Code Quality
+    - [x] Audit Strict Mode compliance
+
+# Phase 4: Architecture & Infrastructure
+- [x] Architecture & Code Quality
+    - [x] Strict Typing (Remove `any`)
+    - [x] Create Barrel Exports (`index.ts`)
+    - [ ] Centralize Theme/Config
+- [x] Game Infrastructure
+    - [x] Implement Asset Preloader (Audio/Textures)
+    - [x] Create Global Error Boundary

@@ -9,10 +9,10 @@ export const Assets = {
         // floor: '/assets/textures/floor.jpg', // Example
     },
     Audio: {
-        bgm: './audio/bgm.mp3',
-        jump: './audio/jump.mp3',
-        collect: './audio/collect.mp3',
-        click: './audio/click.mp3',
+        bgm: `${import.meta.env.BASE_URL}audio/bgm.mp3`,
+        jump: `${import.meta.env.BASE_URL}audio/jump.mp3`,
+        collect: `${import.meta.env.BASE_URL}audio/collect.mp3`,
+        click: `${import.meta.env.BASE_URL}audio/click.mp3`,
     },
 };
 
