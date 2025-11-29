@@ -1,16 +1,15 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, RapierRigidBody, CuboidCollider, CylinderCollider, interactionGroups } from "@react-three/rapier";
+import { RigidBody, RapierRigidBody, CuboidCollider, CylinderCollider } from "@react-three/rapier";
 import * as THREE from "three";
-import { isHost, myPlayer, usePlayersList } from "playroomkit";
+import { isHost, usePlayersList } from "playroomkit";
 import { useGameStore } from "../../stores/useGameStore";
-import { GameConfig } from "../../config";
 
 export const MotherShip = () => {
     const rigidBody = useRef<RapierRigidBody>(null);
     const { isMotherShipActive } = useGameStore();
     const players = usePlayersList(true);
-    const [targetPos, setTargetPos] = useState(new THREE.Vector3(0, 10, 0));
+    const [targetPos] = useState(new THREE.Vector3(0, 10, 0));
     const timeRef = useRef(0);
     const spawnTimer = useRef(0);
 
@@ -18,7 +17,7 @@ export const MotherShip = () => {
     const shipColor = "#444444";
     const glowColor = "#00ffcc";
 
-    useFrame((state, delta) => {
+    useFrame((_, delta) => {
         if (!isMotherShipActive || !rigidBody.current) return;
 
         timeRef.current += delta;
