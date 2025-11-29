@@ -1,5 +1,4 @@
 import { Howl, Howler } from 'howler';
-import { Assets } from '../assets';
 
 class AudioManager {
     private sounds: Record<string, Howl> = {};
@@ -7,6 +6,7 @@ class AudioManager {
 
     constructor() {
         // Preload SFX
+        /*
         this.sounds['jump'] = new Howl({ src: [Assets.Audio.jump], volume: 0.5 });
         this.sounds['collect'] = new Howl({ src: [Assets.Audio.collect], volume: 0.5 });
         this.sounds['click'] = new Howl({ src: [Assets.Audio.click], volume: 0.5 });
@@ -18,6 +18,7 @@ class AudioManager {
             loop: true,
             volume: 0.3
         });
+        */
     }
 
     play(name: string) {

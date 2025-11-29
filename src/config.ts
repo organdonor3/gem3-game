@@ -1,11 +1,12 @@
 export const GameConfig = {
     // World
-    gravity: [0, -9.81, 0] as [number, number, number],
+    gravity: [0, -20, 0] as [number, number, number],
 
     // Player
-    playerSpeed: 5,
-    playerJumpForce: 5,
+    playerSpeed: 8,
+    playerJumpForce: 1,
     playerRadius: 0.5,
+    jetpackForce: 25,
 
     // Camera
     cameraFov: 75,

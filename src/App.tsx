@@ -2,16 +2,14 @@ import { Suspense, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
 import { GameScene } from './scenes/GameScene'
-import { HUD, MainMenu, LoadingScreen } from './components/ui'
+import { HUD, LoadingScreen } from './components/ui'
 import { ErrorBoundary, AssetLoader } from './components/system'
-import { useGameStore } from './stores'
 import { useKeyboardControls } from './hooks'
 import { useControls } from 'leva'
 import { Perf } from 'r3f-perf'
 
 function App() {
   useKeyboardControls();
-  const isPlaying = useGameStore((state) => state.isPlaying)
   const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   const { debug, perf } = useControls('Developer', {
@@ -29,8 +27,7 @@ function App() {
 
       {assetsLoaded && (
         <>
-          {!isPlaying && <MainMenu />}
-          {isPlaying && <HUD />}
+          <HUD />
 
           <Canvas shadows camera={{ position: [0, 5, 10], fov: 50 }}>
             {perf && <Perf position="top-left" />}

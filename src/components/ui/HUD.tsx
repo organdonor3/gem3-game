@@ -1,9 +1,10 @@
 import React from 'react';
 import { useGameStore } from '../../stores/useGameStore';
 import { TouchControls } from './TouchControls';
+import { PlayerListHUD } from './PlayerListHUD';
 
 export const HUD: React.FC = () => {
-    const { score, isPaused, pauseGame, resumeGame } = useGameStore();
+    const { score, isPaused, pauseGame, resumeGame, hp, maxHp, mana, maxMana } = useGameStore();
 
     if (isPaused) {
         return (
@@ -39,14 +40,38 @@ export const HUD: React.FC = () => {
                 </button>
             </div>
 
-            {/* Mobile Controls Hint */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white/50 text-sm hidden md:block">
-                WASD to Move • SPACE to Jump
-            </div>
+
 
             {/* Touch Controls (only visible on touch devices) */}
             <div className="pointer-events-auto">
                 <TouchControls />
+            </div>
+
+            {/* Player List HUD */}
+            <PlayerListHUD />
+
+            {/* Health & Mana Bars */}
+            <div className="absolute bottom-8 left-8 flex flex-col gap-2 w-64 pointer-events-none">
+                {/* Health Bar */}
+                <div className="w-full bg-gray-800 h-6 rounded-full overflow-hidden border border-gray-600 relative">
+                    <div
+                        className="h-full bg-red-600 transition-all duration-200"
+                        style={{ width: `${(hp / maxHp) * 100}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow-md">
+                        HP {Math.floor(hp)} / {maxHp}
+                    </div>
+                </div>
+                {/* Mana Bar */}
+                <div className="w-full bg-gray-800 h-4 rounded-full overflow-hidden border border-gray-600 relative">
+                    <div
+                        className="h-full bg-blue-600 transition-all duration-200"
+                        style={{ width: `${(mana / maxMana) * 100}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">
+                        MANA {Math.floor(mana)} / {maxMana}
+                    </div>
+                </div>
             </div>
         </div>
     );

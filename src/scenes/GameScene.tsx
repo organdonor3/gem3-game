@@ -1,12 +1,32 @@
-import { Physics, RigidBody } from '@react-three/rapier';
-import { Environment, CameraShake } from '@react-three/drei';
+import { useState, useEffect } from 'react';
+import { RigidBody } from '@react-three/rapier';
+import { Environment } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
-import { Player } from '../components/game/Player';
-import { NetworkPlayers } from '../components/game/NetworkPlayers';
-import { Coin } from '../components/game/Coin';
-import { GameConfig } from '../config';
+import { onPlayerJoin } from 'playroomkit';
+import type { PlayerState } from 'playroomkit';
+import { PlayerController } from '../components/game/PlayerController';
+import { SpellTome } from '../components/world';
+import { SpellManager } from '../components/spells/SpellManager';
+import { EnemySpawner } from '../components/enemies/EnemySpawner';
+import { EnemyManager } from '../components/enemies/EnemyManager';
+import { CameraController } from '../components/game/CameraController';
+import { ManaPad } from '../components/world/ManaPad';
+import { SpawnPillar } from '../components/world/SpawnPillar';
 
 export const GameScene = () => {
+    const [players, setPlayers] = useState<PlayerState[]>([]);
+
+    // Manage Player List
+    useEffect(() => {
+        onPlayerJoin((state) => {
+            setPlayers((current) => [...current, state]);
+
+            state.onQuit(() => {
+                setPlayers((current) => current.filter((p) => p.id !== state.id));
+            });
+        });
+    }, []);
+
     return (
         <>
             <color attach="background" args={['#111']} />
@@ -21,58 +41,58 @@ export const GameScene = () => {
             />
             <Environment preset="city" />
 
-            {/* Physics World */}
-            <Physics gravity={GameConfig.gravity}>
-                {/* Floor */}
-                <RigidBody type="fixed" friction={1}>
-                    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-                        <planeGeometry args={[100, 100]} />
-                        <meshStandardMaterial color="#333" />
-                    </mesh>
-                </RigidBody>
+            {/* Floor */}
+            <RigidBody type="fixed" friction={1}>
+                <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+                    <planeGeometry args={[100, 100]} />
+                    <meshStandardMaterial color="#1a1a1a" roughness={0.1} metalness={0.5} />
+                </mesh>
+                <gridHelper args={[100, 100, 0x444444, 0x222222]} position={[0, 0.01, 0]} />
+            </RigidBody>
 
-                {/* Random Obstacles */}
-                <RigidBody position={[5, 1, -5]}>
-                    <mesh castShadow receiveShadow>
-                        <boxGeometry args={[2, 2, 2]} />
-                        <meshStandardMaterial color="orange" />
-                    </mesh>
-                </RigidBody>
+            {/* --- Robot Spellcaster Arena --- */}
 
-                <RigidBody position={[-5, 1, -5]}>
-                    <mesh castShadow receiveShadow>
-                        <sphereGeometry args={[1]} />
-                        <meshStandardMaterial color="purple" />
-                    </mesh>
-                </RigidBody>
+            {/* Spell Manager */}
+            <SpellManager />
 
-                {/* Coins */}
-                <Coin position={[0, 1, -5]} />
-                <Coin position={[3, 1, -3]} />
-                <Coin position={[-3, 1, -3]} />
-                <Coin position={[0, 1, 5]} />
+            {/* Spell Tomes */}
+            <SpellTome position={[5, 1, 5]} spell="fireball" color="orange" />
+            <SpellTome position={[-5, 1, 5]} spell="lightning" color="yellow" />
+            <SpellTome position={[5, 1, -5]} spell="ice_shard" color="cyan" />
+            <SpellTome position={[-5, 1, -5]} spell="magic_missile" color="purple" />
+            <SpellTome position={[0, 1, 8]} spell="wind_blast" color="white" />
 
-                <Player />
-                <NetworkPlayers />
-            </Physics>
+            {/* Mana Pad */}
+            <ManaPad position={[0, 0, 0]} />
+
+            {/* Spawn Pillars */}
+            <SpawnPillar position={[20, 0, 20]} color="red" />
+            <SpawnPillar position={[-20, 0, 20]} color="blue" />
+            <SpawnPillar position={[20, 0, -20]} color="green" />
+            <SpawnPillar position={[-20, 0, -20]} color="yellow" />
+
+            {/* Enemy Spawners */}
+            <EnemySpawner position={[10, 0.1, 10]} type="blob" />
+            <EnemySpawner position={[-10, 0.1, -10]} type="flying" />
+            <EnemySpawner position={[10, 0.1, -10]} type="tank" />
+            <EnemySpawner position={[-10, 0.1, 10]} type="speedy" />
+
+            <EnemyManager />
+
+            {/* Render All Players (Local + Remote) */}
+            {players.map((player) => (
+                <PlayerController key={player.id} player={player} />
+            ))}
+
+            {/* Network Debug Removed */}
+
+            <CameraController />
 
             {/* Post Processing */}
             <EffectComposer>
                 <Bloom luminanceThreshold={1} intensity={1.5} />
                 <Vignette eskil={false} offset={0.1} darkness={1.1} />
             </EffectComposer>
-
-            <CameraShake
-                maxYaw={0.05}
-                maxPitch={0.05}
-                maxRoll={0.05}
-                yawFrequency={0.1}
-                pitchFrequency={0.1}
-                rollFrequency={0.1}
-                intensity={0.5}
-                decay={true}
-                decayRate={0.65}
-            />
         </>
     );
 };

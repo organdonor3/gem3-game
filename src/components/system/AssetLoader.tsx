@@ -1,21 +1,5 @@
 import { useProgress, Html } from '@react-three/drei';
 import { useEffect, useState } from 'react';
-import { Assets } from '../../assets';
-
-// Helper to preload audio
-const preloadAudio = (url: string) => {
-    return new Promise((resolve) => {
-        const audio = new Audio();
-        audio.src = url;
-        audio.oncanplaythrough = () => resolve(true);
-        audio.onerror = () => {
-            console.warn(`Failed to load audio: ${url}`);
-            resolve(false);
-        };
-        // Timeout fallback
-        setTimeout(() => resolve(false), 2000);
-    });
-};
 
 interface AssetLoaderProps {
     onLoaded: () => void;
@@ -27,10 +11,13 @@ export const AssetLoader = ({ onLoaded }: AssetLoaderProps) => {
 
     useEffect(() => {
         const loadAudio = async () => {
+            // Audio Disabled for Debugging (Context Loss Fix)
+            /*
             console.log("Starting audio load...");
             const audioUrls = Object.values(Assets.Audio);
             await Promise.all(audioUrls.map(preloadAudio));
             console.log("Audio load complete.");
+            */
             setAudioLoaded(true);
         };
         loadAudio();
