@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { RigidBody, RapierRigidBody } from '@react-three/rapier';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { RigidBody, RapierRigidBody, interactionGroups } from '@react-three/rapier';
 import { Trail } from '@react-three/drei';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { onPlayerJoin, myPlayer, useMultiplayerState } from 'playroomkit';
+import { useGameStore } from '../../stores/useGameStore';
 
 // Spell Types
 type SpellType =
@@ -27,28 +28,42 @@ interface SpellInstance {
     playerId: string;
 }
 
+import { SpellAssets } from '../systems/GlobalPrewarmer';
+
 // --- GLOBAL ASSETS (Optimization) ---
-// Reusing geometries and materials prevents stutter from instantiation and garbage collection
-const magicMissileGeometry = new THREE.OctahedronGeometry(0.2, 0);
-const magicMissileMaterial = new THREE.MeshStandardMaterial({ color: "purple", emissive: "purple", emissiveIntensity: 4, toneMapped: false });
+// Reusing geometries and materials from GlobalPrewarmer
+const { magicMissile: magicMissileAssets, fireball: fireballAssets, iceShard: iceShardAssets, lightning: lightningAssets } = SpellAssets;
+const magicMissileGeometry = magicMissileAssets.geometry;
+const magicMissileMaterial = magicMissileAssets.material;
 
-const fireballGeometry = new THREE.SphereGeometry(0.4);
-const fireballMaterial = new THREE.MeshStandardMaterial({ color: "orange", emissive: "orange", emissiveIntensity: 2 });
+const fireballGeometry = fireballAssets.geometry;
+const fireballMaterial = fireballAssets.material;
 
-const iceShardGeometry = new THREE.SphereGeometry(0.2);
-const iceShardMaterial = new THREE.MeshStandardMaterial({ color: "cyan", emissive: "cyan", emissiveIntensity: 2 });
+const iceShardGeometry = iceShardAssets.geometry;
+const iceShardMaterial = iceShardAssets.material;
 
-export const SpellManager = () => {
-    const [spells, setSpells] = useState<SpellInstance[]>([]);
-    const [enemies] = useMultiplayerState('enemies', []); // Get enemies for tracking
+const lightningSegmentGeometry = lightningAssets.geometry;
+const lightningSegmentMaterial = lightningAssets.material;
 
-    // Use Ref for enemies to prevent re-renders of ProjectileSpell
-    const enemiesRef = useRef(enemies);
+// Helper component to track enemies without re-rendering SpellManager
+const EnemyTracker = ({ enemiesRef }: { enemiesRef: React.MutableRefObject<any[]> }) => {
+    const [enemies] = useMultiplayerState('enemies', []);
     useEffect(() => {
         enemiesRef.current = enemies;
     }, [enemies]);
+    return null;
+};
+
+export const SpellManager = () => {
+    // console.log("SpellManager Render"); // Uncomment to check render frequency
+    const [spells, setSpells] = useState<SpellInstance[]>([]);
+
+    // Use Ref for enemies to prevent re-renders of ProjectileSpell
+    // We use a separate component to update this ref so SpellManager doesn't re-render on every enemy move
+    const enemiesRef = useRef<any[]>([]);
 
     const addSpell = (data: any) => {
+        performance.mark('spell-cast-start');
         const { type, position, direction, playerId } = data;
         const newSpell: SpellInstance = {
             id: Math.random().toString(36).substr(2, 9),
@@ -58,7 +73,19 @@ export const SpellManager = () => {
             createdAt: Date.now(),
             playerId
         };
-        setSpells(prev => [...prev, newSpell]);
+
+        setSpells(prev => {
+            const next = [...prev, newSpell];
+            console.log(`[Perf] Active Spells: ${next.length}`);
+            return next;
+        });
+
+        requestAnimationFrame(() => {
+            performance.mark('spell-cast-end');
+            performance.measure('Spell Cast Time', 'spell-cast-start', 'spell-cast-end');
+            const measure = performance.getEntriesByName('Spell Cast Time').pop();
+            console.log(`[Perf] Spell Cast Time (${type}): ${measure?.duration.toFixed(2)}ms`);
+        });
     };
 
     useEffect(() => {
@@ -104,47 +131,34 @@ export const SpellManager = () => {
         };
     }, []);
 
-    const removeSpell = (id: string) => {
-        setSpells(prev => prev.filter(s => s.id !== id));
-    };
+    const removeSpell = useCallback((id: string) => {
+        setSpells(prev => {
+            const next = prev.filter(s => s.id !== id);
+            console.log(`[Perf] Active Spells: ${next.length} (Removed ${id})`);
+            return next;
+        });
+    }, []);
 
     return (
         <group>
-            <PrewarmSpells />
+            <EnemyTracker enemiesRef={enemiesRef} />
             {spells.map(spell => (
                 <SpellController
                     key={spell.id}
                     spell={spell}
                     enemiesRef={enemiesRef}
-                    onRemove={() => removeSpell(spell.id)}
+                    removeSpell={removeSpell}
                 />
             ))}
         </group>
     );
 };
 
-// --- PRE-WARMING ---
-// Renders one of each spell type invisibly to force shader compilation on load
-const PrewarmSpells = () => {
-    const [mounted, setMounted] = useState(true);
-    useEffect(() => {
-        // Remove after 1 frame/short delay
-        const timer = setTimeout(() => setMounted(false), 100);
-        return () => clearTimeout(timer);
-    }, []);
+// Memoized SpellController to prevent re-renders of all spells when one changes/adds
+const SpellController = React.memo(({ spell, enemiesRef, removeSpell }: { spell: SpellInstance, enemiesRef: React.MutableRefObject<any[]>, removeSpell: (id: string) => void }) => {
+    // Stable callback for this specific spell
+    const onRemove = useCallback(() => removeSpell(spell.id), [removeSpell, spell.id]);
 
-    if (!mounted) return null;
-
-    return (
-        <group position={[0, -500, 0]}> {/* Render far away */}
-            <mesh geometry={magicMissileGeometry} material={magicMissileMaterial} />
-            <mesh geometry={fireballGeometry} material={fireballMaterial} />
-            <mesh geometry={iceShardGeometry} material={iceShardMaterial} />
-        </group>
-    );
-};
-
-const SpellController = ({ spell, enemiesRef, onRemove }: { spell: SpellInstance, enemiesRef: React.MutableRefObject<any[]>, onRemove: () => void }) => {
     switch (spell.type) {
         case 'fireball': return <ProjectileSpell spell={spell} color="orange" speed={20} onRemove={onRemove} enemiesRef={enemiesRef} />;
         case 'ice_shard': return <ProjectileSpell spell={spell} color="cyan" speed={30} onRemove={onRemove} enemiesRef={enemiesRef} />;
@@ -158,7 +172,7 @@ const SpellController = ({ spell, enemiesRef, onRemove }: { spell: SpellInstance
         case 'blink': return <EffectSpell spell={spell} type="blink" onRemove={onRemove} />;
         default: return null;
     }
-};
+});
 
 const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef }: any) => {
     const ref = useRef<RapierRigidBody>(null);
@@ -167,35 +181,55 @@ const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef 
     const isIceShard = spell.type === 'ice_shard';
 
     // Tracking Logic (Magic Missile)
-    useFrame((state, delta) => {
+    const targetIdRef = useRef<string | null>(null);
+    const { scene } = useThree();
+
+    useFrame((_state, delta) => {
         if (!ref.current) return;
 
-        if (isMagicMissile && enemiesRef.current && enemiesRef.current.length > 0) {
-            // Find closest enemy
+        if (isMagicMissile) {
             const currentPos = ref.current.translation();
-            let closestDist = Infinity;
-            let target: any = null;
             let targetPos = new THREE.Vector3();
+            let hasTarget = false;
 
-            enemiesRef.current.forEach((e: any) => {
-                if (e.hp <= 0) return;
-
-                // Get live position from scene graph if possible
-                let ePos = new THREE.Vector3(e.position.x, e.position.y, e.position.z);
-                const enemyObj = state.scene.getObjectByName(e.id);
-                if (enemyObj) {
-                    enemyObj.getWorldPosition(ePos);
+            // 1. Try to track locked target
+            if (targetIdRef.current) {
+                const targetObj = scene.getObjectByName(targetIdRef.current);
+                if (targetObj) {
+                    targetObj.getWorldPosition(targetPos);
+                    hasTarget = true;
+                } else {
+                    // Target lost/died
+                    targetIdRef.current = null;
                 }
+            }
 
-                const dist = new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z).distanceTo(ePos);
-                if (dist < closestDist && dist < 30) { // Increased Range
-                    closestDist = dist;
-                    target = e;
-                    targetPos.copy(ePos);
+            // 2. Find new target if none locked
+            if (!hasTarget && enemiesRef.current && enemiesRef.current.length > 0) {
+                let closestDist = Infinity;
+                let bestTargetId = null;
+
+                enemiesRef.current.forEach((e: any) => {
+                    if (e.hp <= 0) return;
+
+                    // Use state position for initial selection (rough check)
+                    const ePos = new THREE.Vector3(e.position.x, e.position.y, e.position.z);
+                    const dist = new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z).distanceTo(ePos);
+
+                    if (dist < closestDist && dist < 30) {
+                        closestDist = dist;
+                        bestTargetId = e.id;
+                        targetPos.copy(ePos);
+                    }
+                });
+
+                if (bestTargetId) {
+                    targetIdRef.current = bestTargetId;
+                    hasTarget = true;
                 }
-            });
+            }
 
-            if (target) {
+            if (hasTarget) {
                 const dir = targetPos.clone().sub(new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z)).normalize();
 
                 // Steer towards target - Aggressive Homing
@@ -218,12 +252,39 @@ const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef 
         return () => clearTimeout(timer);
     }, []);
 
+    const { friendlyFire } = useGameStore();
+
     const handleCollision = (e: any) => {
         const other = e.other.rigidBodyObject;
         if (!other) return;
 
         const tag = other.userData?.tag;
-        if (tag !== 'enemy') return; // Only hit enemies
+
+        // Handle Player Hit (Friendly Fire)
+        if (tag === 'player') {
+            if (friendlyFire) {
+                const damage = isFireball ? 3 : (isMagicMissile ? 1.5 : 0.5);
+                window.dispatchEvent(new CustomEvent('player-hit', {
+                    detail: { playerId: other.userData.id, damage: damage }
+                }));
+
+                if (isFireball) {
+                    // Trigger Wind Blast effect on hit
+                    window.dispatchEvent(new CustomEvent('cast-spell', {
+                        detail: {
+                            type: 'wind_blast',
+                            position: ref.current?.translation(),
+                            direction: new THREE.Vector3(0, 1, 0),
+                            playerId: spell.playerId
+                        }
+                    }));
+                }
+                onRemove();
+            }
+            return;
+        }
+
+        if (tag !== 'enemy') return; // Only hit enemies (and players if FF is on)
 
         const damage = isFireball ? 3 : (isMagicMissile ? 1.5 : 0.5);
 
@@ -261,6 +322,13 @@ const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef 
 
     const userData = useMemo(() => ({ damage, type: spell.type }), [damage, spell.type]);
 
+    // Collision Groups
+    // Group 2: Projectile
+    // Filter: 
+    // - Always 0 (World/Enemies)
+    // - If FF is ON: Add 1 (Players)
+    const collisionMask = friendlyFire ? [0, 1] : [0];
+
     return (
         <RigidBody
             ref={ref}
@@ -274,13 +342,14 @@ const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef 
             gravityScale={isFireball ? 1 : 0}
             name="spell"
             userData={userData}
+            collisionGroups={interactionGroups(2, collisionMask)}
         >
             {isMagicMissile ? (
                 // Magic Missile Visuals
                 <group>
                     <mesh geometry={magicMissileGeometry} material={magicMissileMaterial} />
-                    <pointLight color={color} intensity={2} distance={5} decay={2} />
-                    <Trail width={0.4} length={8} color={new THREE.Color(color)} attenuation={(t) => t * t} />
+                    {/* <pointLight color={color} intensity={2} distance={5} decay={2} /> */}
+                    {/* <Trail width={0.4} length={8} color={new THREE.Color(color)} attenuation={(t) => t * t} /> */}
                 </group>
             ) : (
                 // Standard Visuals
@@ -289,7 +358,7 @@ const ProjectileSpell = React.memo(({ spell, color, speed, onRemove, enemiesRef 
                     material={isFireball ? fireballMaterial : iceShardMaterial}
                 />
             )}
-        </RigidBody>
+        </RigidBody >
     );
 });
 
@@ -394,10 +463,14 @@ const InstantSpell = ({ spell, color, onRemove, enemiesRef }: any) => {
                     const dir = next.clone().sub(p).normalize();
                     const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
                     return (
-                        <mesh key={i} position={mid} rotation={new THREE.Euler().setFromQuaternion(quat)}>
-                            <cylinderGeometry args={[0.05, 0.05, len]} />
-                            <meshBasicMaterial color="yellow" toneMapped={false} />
-                        </mesh>
+                        <mesh
+                            key={i}
+                            position={mid}
+                            rotation={new THREE.Euler().setFromQuaternion(quat)}
+                            geometry={lightningSegmentGeometry}
+                            material={lightningSegmentMaterial}
+                            scale={[1, len, 1]} // Scale Y to match length since geometry is height 1
+                        />
                     )
                 })}
             </group>

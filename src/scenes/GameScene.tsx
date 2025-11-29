@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { RigidBody } from '@react-three/rapier';
 import { Environment } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
-import { onPlayerJoin } from 'playroomkit';
+import { onPlayerJoin, useMultiplayerState } from 'playroomkit';
 import type { PlayerState } from 'playroomkit';
 import { PlayerController } from '../components/game/PlayerController';
 import { SpellTome } from '../components/world';
@@ -12,6 +12,9 @@ import { EnemyManager } from '../components/enemies/EnemyManager';
 import { CameraController } from '../components/game/CameraController';
 import { ManaPad } from '../components/world/ManaPad';
 import { SpawnPillar } from '../components/world/SpawnPillar';
+import { TogglePad } from '../components/world/TogglePad';
+import { useGameStore } from '../stores/useGameStore';
+import { GlobalPrewarmer } from '../components/systems/GlobalPrewarmer';
 
 export const GameScene = () => {
     const [players, setPlayers] = useState<PlayerState[]>([]);
@@ -26,6 +29,14 @@ export const GameScene = () => {
             });
         });
     }, []);
+
+    // --- GLOBAL SETTINGS SYNC ---
+    const [friendlyFire, setFriendlyFire] = useMultiplayerState('friendlyFire', false);
+
+    // Sync Network State -> Local Store
+    useEffect(() => {
+        useGameStore.setState({ friendlyFire });
+    }, [friendlyFire]);
 
     return (
         <>
@@ -53,6 +64,7 @@ export const GameScene = () => {
             {/* --- Robot Spellcaster Arena --- */}
 
             {/* Spell Manager */}
+            <GlobalPrewarmer />
             <SpellManager />
 
             {/* Spell Tomes */}
@@ -70,6 +82,14 @@ export const GameScene = () => {
             <SpawnPillar position={[-20, 0, 20]} color="blue" />
             <SpawnPillar position={[20, 0, -20]} color="green" />
             <SpawnPillar position={[-20, 0, -20]} color="yellow" />
+
+            {/* Settings Pads */}
+            <TogglePad
+                position={[0, 0, 15]}
+                settingName="Friendly Fire"
+                value={friendlyFire}
+                onToggle={() => setFriendlyFire(!friendlyFire)}
+            />
 
             {/* Enemy Spawners */}
             <EnemySpawner position={[10, 0.1, 10]} type="blob" />

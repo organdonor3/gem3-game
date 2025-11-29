@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, CapsuleCollider, RapierRigidBody } from "@react-three/rapier";
+import { RigidBody, CapsuleCollider, RapierRigidBody, interactionGroups } from "@react-three/rapier";
 import * as THREE from "three";
-import { myPlayer } from "playroomkit";
+import { myPlayer, isHost } from "playroomkit";
 import type { PlayerState } from "playroomkit";
 import { PlayerModel } from "./PlayerModel";
 import { useInputStore } from "../../stores/useInputStore";
@@ -27,15 +27,35 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
 
     // Spell State
     const [activeSpell, setActiveSpell] = useState("fireball");
-    const { hp, maxHp, mana, maxMana, setHp, setMana, consumeMana, spellCooldown, setSpellCooldown } = useGameStore();
+    const { hp, maxHp, mana, maxMana, setHp, addMana, consumeMana, spellCooldown, setSpellCooldown } = useGameStore();
 
     // Listen for spell changes (from Tomes)
     useEffect(() => {
         if (!isMe) return;
-        const handleSpellChange = (e: any) => setActiveSpell(e.detail);
+        const handleSpellChange = (e: any) => {
+            performance.mark('spell-change-start');
+            setActiveSpell(e.detail);
+
+            requestAnimationFrame(() => {
+                performance.mark('spell-change-end');
+                performance.measure('Spell Change Time', 'spell-change-start', 'spell-change-end');
+                const measure = performance.getEntriesByName('Spell Change Time').pop();
+                console.log(`[Perf] Spell Change Time: ${measure?.duration.toFixed(2)}ms`);
+            });
+        };
+        const handlePlayerHit = (e: any) => {
+            if (e.detail.playerId === player.id) {
+                useGameStore.getState().damagePlayer(e.detail.damage);
+            }
+        };
+
         window.addEventListener('change-spell', handleSpellChange);
-        return () => window.removeEventListener('change-spell', handleSpellChange);
-    }, [isMe]);
+        window.addEventListener('player-hit', handlePlayerHit);
+        return () => {
+            window.removeEventListener('change-spell', handleSpellChange);
+            window.removeEventListener('player-hit', handlePlayerHit);
+        };
+    }, [isMe, player.id]);
 
     // Input Store (only used if isMe)
     const { forward, backward, left, right, jump, fire } = useInputStore();
@@ -45,6 +65,7 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
     const jumpHeldTime = useRef(0);
     const jumpedFromGround = useRef(false);
     const cooldownTimer = useRef(0);
+    const velocityRef = useRef(new THREE.Vector3()); // Track velocity for animations
 
     useFrame((state, delta) => {
         if (!rigidBody.current || !container.current) return;
@@ -55,11 +76,17 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
                 setHp(Math.min(maxHp, hp + delta * 2)); // 2 HP per second
             }
             if (mana < maxMana) {
-                setMana(Math.min(maxMana, mana + delta * 10)); // 10 Mana per second
+                addMana(delta * 10); // 10 Mana per second
+            }
+
+            // Sync Host Status
+            if (isHost()) {
+                player.setState('isHost', true, true);
             }
 
             // --- LOCAL CONTROL ---
             const linvel = rigidBody.current.linvel();
+            velocityRef.current.set(linvel.x, linvel.y, linvel.z); // Update ref
             const speed = GameConfig.playerSpeed;
 
             // Get camera forward/right vectors projected on XZ plane
@@ -84,10 +111,15 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
             if (isMovingNow) {
                 moveDir.normalize().multiplyScalar(speed);
 
-                // Rotate player to face movement direction
+                // Rotate player to face movement direction (Smooth Turn)
                 const angle = Math.atan2(moveDir.x, moveDir.z);
-                const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-                rigidBody.current.setRotation(rotation, true);
+                const targetRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+
+                const currentRotation = rigidBody.current.rotation();
+                const currentQuat = new THREE.Quaternion(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
+
+                currentQuat.slerp(targetRotation, 15 * delta); // Smooth factor
+                rigidBody.current.setRotation(currentQuat, true);
             }
 
             // Apply movement (Direct velocity control for snappy feel)
@@ -134,7 +166,6 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
 
             // Spell Casting Logic
             const COOLDOWN_DURATION = 0.5; // 0.5s cooldown
-
             // Update Cooldown
             if (cooldownTimer.current > 0) {
                 cooldownTimer.current -= delta;
@@ -153,33 +184,51 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
                     setSpellCooldown(1);
 
                     // Cast Spell
-                    // Get character forward direction
                     const rotation = rigidBody.current.rotation();
                     const quaternion = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-                    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
-
-                    // Spawn position slightly in front
+                    const baseForward = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
                     const spawnPos = rigidBody.current.translation();
-                    const castPos = new THREE.Vector3(spawnPos.x, spawnPos.y + 0.5, spawnPos.z).add(forward.multiplyScalar(1.5));
+                    const baseCastPos = new THREE.Vector3(spawnPos.x, spawnPos.y + 0.5, spawnPos.z).add(baseForward.clone().multiplyScalar(1.5));
 
-                    const castData = {
-                        type: activeSpell,
-                        position: castPos,
-                        direction: forward,
-                        playerId: myPlayer().id,
-                        timestamp: Date.now()
+                    const fireProjectile = (offsetDir: THREE.Vector3, delay: number = 0) => {
+                        setTimeout(() => {
+                            const castData = {
+                                type: activeSpell,
+                                position: baseCastPos,
+                                direction: offsetDir,
+                                playerId: myPlayer().id,
+                                timestamp: Date.now()
+                            };
+                            window.dispatchEvent(new CustomEvent('cast-spell', { detail: castData }));
+                            myPlayer().setState('lastCast', castData);
+                        }, delay);
                     };
 
-                    // Local Event
-                    window.dispatchEvent(new CustomEvent('cast-spell', { detail: castData }));
+                    if (activeSpell === 'magic_missile') {
+                        // 3-Round Burst
+                        fireProjectile(baseForward, 0);
+                        fireProjectile(baseForward, 100);
+                        fireProjectile(baseForward, 200);
+                    } else if (activeSpell === 'ice_shard') {
+                        // Shotgun Blast (5 shards)
+                        for (let i = 0; i < 5; i++) {
+                            const spread = new THREE.Vector3(
+                                (Math.random() - 0.5) * 0.5,
+                                (Math.random() - 0.5) * 0.2, // Less vertical spread
+                                (Math.random() - 0.5) * 0.5
+                            );
+                            const dir = baseForward.clone().add(spread).normalize();
+                            fireProjectile(dir, 0);
+                        }
+                    } else {
+                        // Standard Single Shot (Fireball)
+                        fireProjectile(baseForward, 0);
+                    }
 
-                    // Network Broadcast
-                    myPlayer().setState('lastCast', castData);
                 } else {
                     console.log("Not enough mana!");
                 }
             }
-            // wasFiring.current = fire; // Removed for continuous fire
 
             // --- SYNC TO NETWORK ---
             const now = Date.now();
@@ -221,6 +270,10 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
                 // Interpolate Position
                 const currentPos = rigidBody.current.translation();
                 const vecPos = new THREE.Vector3(pos.x, pos.y, pos.z);
+
+                // Calculate approximate velocity for remote players
+                const dist = vecPos.clone().sub(new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z));
+                velocityRef.current.copy(dist).divideScalar(delta); // Approx velocity
 
                 // Simple Lerp for Kinematic
                 const newPos = new THREE.Vector3().lerpVectors(
@@ -276,14 +329,16 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
             enabledRotations={[false, false, false]}
             friction={0}
             userData={userData}
+            collisionGroups={interactionGroups(1, [0, 1, 2])} // Group 1 (Player), Collides with 0 (World), 1 (Player), 2 (Projectile)
         >
-            <CapsuleCollider args={[0.5, 0.4]} />
-            <group ref={container} position={[0, -0.5, 0]}>
+            <CapsuleCollider args={[0.6, 0.4]} position={[0, 0.5, 0]} />
+            <group ref={container} position={[0, -0.8, 0]}>
                 <PlayerModel
                     color={color}
                     isMoving={animState.isMoving}
                     isJumping={animState.isJumping}
                     isJetpacking={animState.isJetpacking}
+                    velocityRef={velocityRef} // Pass velocity ref
                     cooldown={isMe ? spellCooldown : 0}
                     manaRatio={isMe ? mana / maxMana : 1}
                     hpRatio={isMe ? hp / maxHp : 1}

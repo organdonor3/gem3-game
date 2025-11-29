@@ -11,6 +11,7 @@ interface GameState {
 
     // Settings
     volume: number;
+    friendlyFire: boolean;
 
     // Player Stats
     hp: number;
@@ -25,10 +26,12 @@ interface GameState {
     endGame: () => void;
     addScore: (points: number) => void;
     setVolume: (vol: number) => void;
+    toggleFriendlyFire: () => void;
 
     // Player Actions
     setHp: (hp: number) => void;
     setMana: (mana: number) => void;
+    addMana: (amount: number) => void;
     damagePlayer: (amount: number) => void;
     consumeMana: (amount: number) => boolean;
     spellCooldown: number;
@@ -43,6 +46,7 @@ export const useGameStore = create<GameState>()(
             score: 0,
             highScore: 0,
             volume: GameConfig.defaultVolume,
+            friendlyFire: false,
 
             hp: 100,
             maxHp: 100,
@@ -67,6 +71,7 @@ export const useGameStore = create<GameState>()(
                     audioManager.setVolume(vol);
                 });
             },
+            toggleFriendlyFire: () => set((state) => ({ friendlyFire: !state.friendlyFire })),
 
             setHp: (hp) => set({ hp }),
             setMana: (mana) => set({ mana }),
@@ -86,6 +91,9 @@ export const useGameStore = create<GameState>()(
                 }
                 return false;
             },
+            addMana: (amount) => set((state) => ({
+                mana: Math.min(state.maxMana, state.mana + amount)
+            })),
             setSpellCooldown: (val) => set({ spellCooldown: val })
         }),
         {
