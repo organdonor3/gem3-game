@@ -121,25 +121,25 @@ export const MotherShip = () => {
                     args={[5, 2]} // Half-height, radius
                     sensor
                     onIntersectionEnter={(payload) => {
-                        if (payload.other.rigidBodyObject?.userData?.tag === 'player') {
-                            // Apply force logic here or set flag on player
-                            // Since we can't easily apply force to another RB from here without reference,
-                            // we'll dispatch an event that PlayerController listens to, or rely on Player checking for this sensor?
-                            // Easier: Dispatch event 'enter-tractor-beam'
+                        const userData = payload.other.rigidBodyObject?.userData;
+                        if (userData && (userData.tag === 'player' || userData.tag === 'enemy')) {
                             window.dispatchEvent(new CustomEvent('tractor-beam', {
                                 detail: {
                                     active: true,
-                                    playerId: payload.other.rigidBodyObject.userData.id
+                                    targetId: userData.id,
+                                    targetType: userData.tag
                                 }
                             }));
                         }
                     }}
                     onIntersectionExit={(payload) => {
-                        if (payload.other.rigidBodyObject?.userData?.tag === 'player') {
+                        const userData = payload.other.rigidBodyObject?.userData;
+                        if (userData && (userData.tag === 'player' || userData.tag === 'enemy')) {
                             window.dispatchEvent(new CustomEvent('tractor-beam', {
                                 detail: {
                                     active: false,
-                                    playerId: payload.other.rigidBodyObject.userData.id
+                                    targetId: userData.id,
+                                    targetType: userData.tag
                                 }
                             }));
                         }

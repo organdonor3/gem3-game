@@ -7,6 +7,7 @@ import { DynamicShadow } from "../effects/DynamicShadow";
 import { useEnemyStatus } from "./useEnemyStatus";
 import { StatusIcons } from "../ui/StatusIcons";
 import type { StatusEffect } from "./EnemyManager";
+import { useTractorBeam } from "./hooks/useTractorBeam";
 
 export const SpeedyEnemy = ({ id, position, hp = 1, speedModifier = 1, statusEffects }: { id: string, position: [number, number, number], hp?: number, speedModifier?: number, statusEffects?: StatusEffect[] }) => {
     const ref = useRef<RapierRigidBody>(null);
@@ -19,12 +20,20 @@ export const SpeedyEnemy = ({ id, position, hp = 1, speedModifier = 1, statusEff
     const currentPosVec = useRef(new THREE.Vector3(position[0], position[1], position[2]));
     const { effectiveSpeed, movementOverride, canMove, colorOverlay } = useEnemyStatus(currentPosVec.current, statusEffects, 7 * speedModifier);
 
+    // Tractor Beam Logic
+    const isInBeam = useTractorBeam(id);
+
     useFrame((state) => {
         if (!ref.current || hp <= 0) return;
 
         const time = state.clock.getElapsedTime() + timeOffset.current;
         const currentPos = ref.current.translation();
         currentPosVec.current.set(currentPos.x, currentPos.y, currentPos.z);
+
+        // Tractor Beam Override
+        if (isInBeam.current) {
+            ref.current.applyImpulse({ x: 0, y: 0.1, z: 0 }, true); // Light, lifts easily
+        }
 
         if (!canMove) {
             ref.current.setLinvel({ x: 0, y: ref.current.linvel().y, z: 0 }, true);

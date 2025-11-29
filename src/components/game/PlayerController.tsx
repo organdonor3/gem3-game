@@ -105,7 +105,7 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
         };
 
         const handleTractorBeam = (e: any) => {
-            if (e.detail.playerId === player.id) {
+            if (e.detail.targetId === player.id) {
                 isInTractorBeam.current = e.detail.active;
             }
         };
