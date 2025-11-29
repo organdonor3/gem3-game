@@ -1,23 +1,35 @@
 import { useState, useEffect } from 'react';
 import { onPlayerJoin, myPlayer } from 'playroomkit';
 import type { PlayerState } from 'playroomkit';
+import { useGameStore } from '../../stores/useGameStore';
+import { SpellDefinitions } from '../spells/SpellDefinitions';
 
 const PlayerBadge = ({ player }: { player: PlayerState }) => {
     const [profile, setProfile] = useState(player.getProfile());
     const [isHostUser, setIsHostUser] = useState(false);
+    const [primarySpell, setPrimarySpell] = useState(player.getState('primarySpell') || 'fireball');
+    const [secondarySpell, setSecondarySpell] = useState(player.getState('secondarySpell') || 'fireball');
 
     useEffect(() => {
         // Initial check
         setIsHostUser(player.getState('isHost'));
     }, []);
 
+    const { mySpells } = useGameStore();
+    const isMe = player.id === myPlayer()?.id;
+
     useEffect(() => {
+        // Initial values
+        if (!isMe) {
+            setPrimarySpell(player.getState('primarySpell') || 'fireball');
+            setSecondarySpell(player.getState('secondarySpell') || 'fireball');
+        }
+        setIsHostUser(player.getState('isHost'));
+
         const interval = setInterval(() => {
             const newProfile = player.getProfile();
             setProfile((prev) => {
-                // Force update if we have a name now and didn't before
                 if (!prev?.name && newProfile?.name) return newProfile;
-                // Standard change check
                 if (prev?.name !== newProfile?.name || prev?.photo !== newProfile?.photo) {
                     return newProfile;
                 }
@@ -26,9 +38,31 @@ const PlayerBadge = ({ player }: { player: PlayerState }) => {
 
             // Check Host Status
             setIsHostUser(player.getState('isHost'));
-        }, 1000);
+
+            // Check Spells (Only for remote players)
+            if (!isMe) {
+                const pSpell = player.getState('primarySpell');
+                const sSpell = player.getState('secondarySpell');
+
+                if (pSpell && pSpell !== primarySpell) {
+                    setPrimarySpell(pSpell);
+                }
+                if (sSpell && sSpell !== secondarySpell) {
+                    setSecondarySpell(sSpell);
+                }
+            }
+        }, 100); // Poll faster (100ms) for responsiveness
+
         return () => clearInterval(interval);
-    }, [player]);
+    }, [player, primarySpell, secondarySpell, isMe]);
+
+    // Sync local spells immediately
+    useEffect(() => {
+        if (isMe) {
+            setPrimarySpell(mySpells.primary);
+            setSecondarySpell(mySpells.secondary);
+        }
+    }, [mySpells, isMe]);
 
     // Generate a consistent color from ID if profile color is missing/white
     const getColorFromId = (id: string) => {
@@ -46,6 +80,12 @@ const PlayerBadge = ({ player }: { player: PlayerState }) => {
     const photo = profile?.photo || '';
     // Fallback to ID if name is missing
     const name = profile?.name || `Player ${player.id.substr(0, 4)}`;
+
+    // Helper to get spell color
+    const getSpellColor = (spellName: string) => {
+        const def = SpellDefinitions[spellName as keyof typeof SpellDefinitions];
+        return def?.color || 'gray';
+    };
 
     return (
         <div className="flex flex-col items-center gap-1 min-w-[80px] relative">
@@ -77,6 +117,20 @@ const PlayerBadge = ({ player }: { player: PlayerState }) => {
             >
                 {name}
             </span>
+
+            {/* Equipped Spells Icons */}
+            <div className="flex gap-1 mt-1">
+                <div
+                    className="w-4 h-4 rounded-full border border-white/50 shadow-sm"
+                    style={{ backgroundColor: getSpellColor(primarySpell) }}
+                    title={`Primary: ${primarySpell}`}
+                />
+                <div
+                    className="w-4 h-4 rounded-full border border-white/50 shadow-sm"
+                    style={{ backgroundColor: getSpellColor(secondarySpell) }}
+                    title={`Secondary: ${secondarySpell}`}
+                />
+            </div>
         </div>
     );
 };

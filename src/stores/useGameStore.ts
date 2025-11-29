@@ -36,6 +36,17 @@ interface GameState {
     consumeMana: (amount: number) => boolean;
     spellCooldown: number;
     setSpellCooldown: (val: number) => void;
+
+    activeEffects: { type: string; duration: number; intensity?: number; startTime: number }[];
+    addEffect: (effect: { type: string; duration: number; intensity?: number }) => void;
+    removeEffect: (type: string) => void;
+    tickEffects: (delta: number) => void;
+
+    mySpells: { primary: string; secondary: string };
+    setMySpells: (spells: Partial<{ primary: string; secondary: string }>) => void;
+
+    isMotherShipActive: boolean;
+    setMotherShipActive: (active: boolean) => void;
 }
 
 export const useGameStore = create<GameState>()(
@@ -94,7 +105,55 @@ export const useGameStore = create<GameState>()(
             addMana: (amount) => set((state) => ({
                 mana: Math.min(state.maxMana, state.mana + amount)
             })),
-            setSpellCooldown: (val) => set({ spellCooldown: val })
+            setSpellCooldown: (val) => set({ spellCooldown: val }),
+
+            // Status Effects
+            activeEffects: [],
+            addEffect: (effect) => set((state) => {
+                const existing = state.activeEffects.find(e => e.type === effect.type);
+                if (existing) {
+                    // Refresh duration
+                    return {
+                        activeEffects: state.activeEffects.map(e =>
+                            e.type === effect.type ? { ...e, duration: effect.duration } : e
+                        )
+                    };
+                }
+                return {
+                    activeEffects: [...state.activeEffects, { ...effect, startTime: Date.now() }]
+                };
+            }),
+            removeEffect: (type) => set((state) => ({
+                activeEffects: state.activeEffects.filter(e => e.type !== type)
+            })),
+            tickEffects: (delta) => set((state) => {
+                let hpChange = 0;
+
+                const nextEffects = state.activeEffects.map(e => {
+                    // DoT Logic
+                    if (e.type === 'burning') {
+                        hpChange -= 5 * delta; // 5 DPS
+                    }
+                    return { ...e, duration: e.duration - (delta * 1000) };
+                }).filter(e => e.duration > 0);
+
+                if (hpChange !== 0) {
+                    // Apply HP change (avoid calling setHp to prevent recursion/overhead, just update state)
+                    return {
+                        activeEffects: nextEffects,
+                        hp: Math.max(0, Math.min(state.maxHp, state.hp + hpChange))
+                    };
+                }
+
+                return { activeEffects: nextEffects };
+            }),
+
+            // Local Player Spells (for HUD immediate update)
+            mySpells: { primary: 'fireball', secondary: 'fireball' },
+            setMySpells: (spells) => set((state) => ({ mySpells: { ...state.mySpells, ...spells } })),
+
+            isMotherShipActive: false,
+            setMotherShipActive: (active) => set({ isMotherShipActive: active })
         }),
         {
             name: 'game-storage', // unique name

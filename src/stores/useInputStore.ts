@@ -7,6 +7,7 @@ interface InputState {
     right: boolean;
     jump: boolean;
     fire: boolean;
+    altFire: boolean;
 
     setForward: (active: boolean) => void;
     setBackward: (active: boolean) => void;
@@ -14,6 +15,7 @@ interface InputState {
     setRight: (active: boolean) => void;
     setJump: (active: boolean) => void;
     setFire: (active: boolean) => void;
+    setAltFire: (active: boolean) => void;
 }
 
 export const useInputStore = create<InputState>((set) => {
@@ -39,10 +41,16 @@ export const useInputStore = create<InputState>((set) => {
 
     const handleMouseDown = (e: MouseEvent) => {
         if (e.button === 0) set({ fire: true });
+        if (e.button === 2) set({ altFire: true });
     };
 
     const handleMouseUp = (e: MouseEvent) => {
         if (e.button === 0) set({ fire: false });
+        if (e.button === 2) set({ altFire: false });
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+        e.preventDefault(); // Prevent context menu on right click
     };
 
     // Add event listeners
@@ -51,6 +59,7 @@ export const useInputStore = create<InputState>((set) => {
         window.addEventListener('keyup', handleKeyUp);
         window.addEventListener('mousedown', handleMouseDown);
         window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('contextmenu', handleContextMenu);
     }
 
     return {
@@ -60,6 +69,7 @@ export const useInputStore = create<InputState>((set) => {
         right: false,
         jump: false,
         fire: false,
+        altFire: false,
 
         setForward: (active) => set({ forward: active }),
         setBackward: (active) => set({ backward: active }),
@@ -67,5 +77,6 @@ export const useInputStore = create<InputState>((set) => {
         setRight: (active) => set({ right: active }),
         setJump: (active) => set({ jump: active }),
         setFire: (active) => set({ fire: active }),
+        setAltFire: (active) => set({ altFire: active }),
     };
 });

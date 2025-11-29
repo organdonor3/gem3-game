@@ -15,13 +15,13 @@ interface TogglePadProps {
 export const TogglePad = ({ position, settingName, value, onToggle }: TogglePadProps) => {
     const isLocalPlayerOnPad = useRef(false);
     const progress = useRef(0);
-    const [active, setActive] = useState(false);
+    const [_, setActive] = useState(false);
 
     // Visual Refs
     const ringRef = useRef<THREE.Mesh>(null);
     const textRef = useRef<any>(null);
 
-    useFrame((state, delta) => {
+    useFrame((_state, delta) => {
         // Progress Logic
         if (isLocalPlayerOnPad.current) {
             progress.current = Math.min(3, progress.current + delta);
@@ -51,7 +51,7 @@ export const TogglePad = ({ position, settingName, value, onToggle }: TogglePadP
 
     const handleIntersectionEnter = (e: any) => {
         const other = e.other.rigidBodyObject;
-        if (other && other.userData?.tag === 'player' && other.userData?.id === myPlayer().id) {
+        if (other && other.userData?.tag === 'player' && other.userData?.id === myPlayer()?.id) {
             isLocalPlayerOnPad.current = true;
             setActive(true);
         }
@@ -59,7 +59,7 @@ export const TogglePad = ({ position, settingName, value, onToggle }: TogglePadP
 
     const handleIntersectionExit = (e: any) => {
         const other = e.other.rigidBodyObject;
-        if (other && other.userData?.tag === 'player' && other.userData?.id === myPlayer().id) {
+        if (other && other.userData?.tag === 'player' && other.userData?.id === myPlayer()?.id) {
             isLocalPlayerOnPad.current = false;
             setActive(false);
             progress.current = 0; // Reset immediately on exit? Or let it decay? Let's decay.

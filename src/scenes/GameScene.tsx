@@ -15,6 +15,8 @@ import { SpawnPillar } from '../components/world/SpawnPillar';
 import { TogglePad } from '../components/world/TogglePad';
 import { useGameStore } from '../stores/useGameStore';
 import { GlobalPrewarmer } from '../components/systems/GlobalPrewarmer';
+import { FireHazard } from '../components/world/FireHazard';
+import { MotherShip } from '../components/enemies/MotherShip';
 
 export const GameScene = () => {
     const [players, setPlayers] = useState<PlayerState[]>([]);
@@ -37,6 +39,12 @@ export const GameScene = () => {
     useEffect(() => {
         useGameStore.setState({ friendlyFire });
     }, [friendlyFire]);
+
+    const [isMotherShipActive, setMotherShipActive] = useMultiplayerState('isMotherShipActive', false);
+
+    useEffect(() => {
+        useGameStore.setState({ isMotherShipActive });
+    }, [isMotherShipActive]);
 
     return (
         <>
@@ -74,6 +82,13 @@ export const GameScene = () => {
             <SpellTome position={[-5, 1, -5]} spell="magic_missile" color="purple" />
             <SpellTome position={[0, 1, 8]} spell="wind_blast" color="white" />
 
+            {/* New Spells */}
+            <SpellTome position={[0, 1, -8]} spell="water_gun" color="blue" />
+            <SpellTome position={[8, 1, 0]} spell="bait_ball" color="pink" />
+            <SpellTome position={[-8, 1, 0]} spell="net_projectile" color="green" />
+            <SpellTome position={[8, 1, 8]} spell="summon_cage" color="brown" />
+            <SpellTome position={[-8, 1, 8]} spell="shout" color="gold" />
+
             {/* Mana Pad */}
             <ManaPad position={[0, 0, 0]} />
 
@@ -90,6 +105,34 @@ export const GameScene = () => {
                 value={friendlyFire}
                 onToggle={() => setFriendlyFire(!friendlyFire)}
             />
+            <TogglePad
+                position={[5, 0, 15]}
+                settingName="Mother Ship"
+                value={isMotherShipActive}
+                onToggle={() => setMotherShipActive(!isMotherShipActive)}
+            />
+
+            {/* Mother Ship Boss */}
+            <MotherShip />
+
+            {/* Fire Hazards & Platforms */}
+            {/* Hazard 1 */}
+            <FireHazard position={[15, 0.01, 0]} size={[8, 1, 8]} />
+            <RigidBody type="fixed" position={[15, 2, 0]}>
+                <mesh receiveShadow castShadow>
+                    <boxGeometry args={[10, 0.2, 2]} />
+                    <meshStandardMaterial color="#444" roughness={0.8} />
+                </mesh>
+            </RigidBody>
+
+            {/* Hazard 2 */}
+            <FireHazard position={[-15, 0.01, 0]} size={[8, 1, 8]} />
+            <RigidBody type="fixed" position={[-15, 2, 0]}>
+                <mesh receiveShadow castShadow>
+                    <boxGeometry args={[10, 0.2, 2]} />
+                    <meshStandardMaterial color="#444" roughness={0.8} />
+                </mesh>
+            </RigidBody>
 
             {/* Enemy Spawners */}
             <EnemySpawner position={[10, 0.1, 10]} type="blob" />

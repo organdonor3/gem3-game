@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, CapsuleCollider, RapierRigidBody, interactionGroups } from "@react-three/rapier";
+import { RigidBody, CapsuleCollider, RapierRigidBody, interactionGroups, useBeforePhysicsStep } from "@react-three/rapier";
 import * as THREE from "three";
 import { myPlayer, isHost } from "playroomkit";
 import type { PlayerState } from "playroomkit";
@@ -8,13 +8,15 @@ import { PlayerModel } from "./PlayerModel";
 import { useInputStore } from "../../stores/useInputStore";
 import { useGameStore } from "../../stores/useGameStore";
 import { GameConfig } from "../../config";
+import { SpellDefinitions } from "../spells/SpellDefinitions";
+import { checkSynergy, SynergyMatrix } from "../spells/SynergyDefinitions";
 
 interface PlayerControllerProps {
     player: PlayerState;
 }
 
 export const PlayerController = ({ player }: PlayerControllerProps) => {
-    const isMe = player.id === myPlayer().id;
+    const isMe = player.id === myPlayer()?.id;
     const rigidBody = useRef<RapierRigidBody>(null);
     const container = useRef<THREE.Group>(null);
 
@@ -26,234 +28,336 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
     });
 
     // Spell State
-    const [activeSpell, setActiveSpell] = useState("fireball");
-    const { hp, maxHp, mana, maxMana, setHp, addMana, consumeMana, spellCooldown, setSpellCooldown } = useGameStore();
+    const [primarySpell, setPrimarySpell] = useState("fireball");
+    const [secondarySpell, setSecondarySpell] = useState("fireball"); // Default secondary
+    const lastUsedSlot = useRef<'primary' | 'secondary'>('primary'); // Track last used slot for replacement
 
-    // Listen for spell changes (from Tomes)
+    // Tractor Beam State
+    const isInTractorBeam = useRef(false);
+
+    // Init Network State
+    useEffect(() => {
+        if (isMe) {
+            player.setState('primarySpell', primarySpell, true);
+            player.setState('secondarySpell', secondarySpell, true);
+        }
+    }, [isMe]);
+
+    const { hp, maxHp, mana, maxMana, setHp, addMana, consumeMana, spellCooldown, setSpellCooldown, activeEffects, tickEffects, addEffect, removeEffect } = useGameStore();
+
+    // Listen for spell changes and hits
     useEffect(() => {
         if (!isMe) return;
-        const handleSpellChange = (e: any) => {
-            performance.mark('spell-change-start');
-            setActiveSpell(e.detail);
 
-            requestAnimationFrame(() => {
-                performance.mark('spell-change-end');
-                performance.measure('Spell Change Time', 'spell-change-start', 'spell-change-end');
-                const measure = performance.getEntriesByName('Spell Change Time').pop();
-                console.log(`[Perf] Spell Change Time: ${measure?.duration.toFixed(2)}ms`);
-            });
+        const handleSpellChange = (e: any) => {
+            const newSpell = e.detail;
+
+            // Replace the spell in the last used slot
+            if (lastUsedSlot.current === 'primary') {
+                setPrimarySpell(newSpell);
+                player.setState('primarySpell', newSpell, true);
+                useGameStore.getState().setMySpells({ primary: newSpell });
+            } else {
+                setSecondarySpell(newSpell);
+                player.setState('secondarySpell', newSpell, true);
+                useGameStore.getState().setMySpells({ secondary: newSpell });
+            }
         };
+
         const handlePlayerHit = (e: any) => {
             if (e.detail.playerId === player.id) {
-                useGameStore.getState().damagePlayer(e.detail.damage);
+                const { damage, spellTags } = e.detail;
+                let finalDamage = damage;
+
+                // Check Synergies
+                if (spellTags) {
+                    const currentEffects = useGameStore.getState().activeEffects;
+                    const synergy = checkSynergy(spellTags, currentEffects);
+
+                    if (synergy) {
+                        console.log(`[Synergy] ${synergy.name} triggered!`);
+
+                        if (synergy.damageMultiplier) finalDamage *= synergy.damageMultiplier;
+                        if (synergy.bonusDamage) finalDamage += synergy.bonusDamage;
+
+                        if (synergy.removeTriggerEffect) {
+                            // Find which effect triggered it
+                            for (const tag of spellTags) {
+                                if (SynergyMatrix[tag]) {
+                                    for (const effect of currentEffects) {
+                                        if (SynergyMatrix[tag][effect.type] === synergy) {
+                                            removeEffect(effect.type);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (synergy.addedEffect) {
+                            addEffect(synergy.addedEffect);
+                        }
+                    }
+                }
+
+                useGameStore.getState().damagePlayer(finalDamage);
+            }
+        };
+
+        const handleTractorBeam = (e: any) => {
+            if (e.detail.playerId === player.id) {
+                isInTractorBeam.current = e.detail.active;
             }
         };
 
         window.addEventListener('change-spell', handleSpellChange);
         window.addEventListener('player-hit', handlePlayerHit);
+        window.addEventListener('tractor-beam', handleTractorBeam);
         return () => {
             window.removeEventListener('change-spell', handleSpellChange);
             window.removeEventListener('player-hit', handlePlayerHit);
+            window.removeEventListener('tractor-beam', handleTractorBeam);
         };
     }, [isMe, player.id]);
 
     // Input Store (only used if isMe)
-    const { forward, backward, left, right, jump, fire } = useInputStore();
+    const { forward, backward, left, right, jump, fire, altFire } = useInputStore();
 
     // Sync Refs
     const lastSync = useRef(0);
     const jumpHeldTime = useRef(0);
     const jumpedFromGround = useRef(false);
     const cooldownTimer = useRef(0);
+    const maxCooldownRef = useRef(0.5);
     const velocityRef = useRef(new THREE.Vector3()); // Track velocity for animations
 
-    useFrame((state, delta) => {
-        if (!rigidBody.current || !container.current) return;
+    // Capture Camera Rotation for Physics Step
+    const cameraQuat = useRef(new THREE.Quaternion());
+    useFrame((state) => {
+        cameraQuat.current.copy(state.camera.quaternion);
+    });
 
-        if (isMe) {
-            // Regen
-            if (hp < maxHp) {
-                setHp(Math.min(maxHp, hp + delta * 2)); // 2 HP per second
+    // Ref to pass state from Physics to Render
+    const animStateRef = useRef({ isMoving: false, isJumping: false, isJetpacking: false });
+
+    useBeforePhysicsStep(() => {
+        if (!rigidBody.current || !isMe) return;
+
+        const delta = 1 / 60; // Fixed Step
+
+        // --- REGEN & EFFECTS ---
+        tickEffects(delta);
+        if (hp < maxHp) setHp(Math.min(maxHp, hp + delta * 2));
+        if (mana < maxMana) addMana(delta * 10);
+
+        // --- MOVEMENT ---
+        const linvel = rigidBody.current.linvel();
+        velocityRef.current.set(linvel.x, linvel.y, linvel.z);
+
+        // Calculate Speed Modifier
+        let speedMod = 1;
+        const slowEffect = activeEffects.find(e => e.type === 'slow');
+        if (slowEffect) speedMod -= (slowEffect.intensity || 0.3);
+
+        const speed = GameConfig.playerSpeed * Math.max(0.1, speedMod);
+
+        const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat.current);
+        forwardDir.y = 0;
+        forwardDir.normalize();
+
+        const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuat.current);
+        rightDir.y = 0;
+        rightDir.normalize();
+
+        const moveDir = new THREE.Vector3();
+        if (forward) moveDir.add(forwardDir);
+        if (backward) moveDir.sub(forwardDir);
+        if (left) moveDir.sub(rightDir);
+        if (right) moveDir.add(rightDir);
+
+        const isMovingNow = moveDir.lengthSq() > 0;
+
+        if (isMovingNow) {
+            moveDir.normalize().multiplyScalar(speed);
+
+            // Rotate player
+            const angle = Math.atan2(moveDir.x, moveDir.z);
+            const targetRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+            const currentRotation = rigidBody.current.rotation();
+            const currentQuat = new THREE.Quaternion(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
+            currentQuat.slerp(targetRotation, 15 * delta);
+            rigidBody.current.setRotation(currentQuat, true);
+        }
+
+        rigidBody.current.setLinvel({ x: moveDir.x, y: linvel.y, z: moveDir.z }, true);
+
+        // --- TRACTOR BEAM ---
+        if (isInTractorBeam.current) {
+            rigidBody.current.applyImpulse({ x: 0, y: 0.5, z: 0 }, true);
+            // Damping to prevent infinite acceleration
+            if (linvel.y > 5) {
+                rigidBody.current.setLinvel({ x: linvel.x, y: 5, z: linvel.z }, true);
             }
-            if (mana < maxMana) {
-                addMana(delta * 10); // 10 Mana per second
+        }
+
+        // --- JUMP & JETPACK ---
+        const isGrounded = Math.abs(linvel.y) < 0.1;
+        let isJetpacking = false;
+
+        if (jump) {
+            if (jumpHeldTime.current === 0) {
+                jumpedFromGround.current = isGrounded;
             }
+            jumpHeldTime.current += delta;
 
-            // Sync Host Status
-            if (isHost()) {
-                player.setState('isHost', true, true);
-            }
-
-            // --- LOCAL CONTROL ---
-            const linvel = rigidBody.current.linvel();
-            velocityRef.current.set(linvel.x, linvel.y, linvel.z); // Update ref
-            const speed = GameConfig.playerSpeed;
-
-            // Get camera forward/right vectors projected on XZ plane
-            const camera = state.camera;
-            const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            forwardDir.y = 0;
-            forwardDir.normalize();
-
-            const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-            rightDir.y = 0;
-            rightDir.normalize();
-
-            const moveDir = new THREE.Vector3();
-            if (forward) moveDir.add(forwardDir);
-            if (backward) moveDir.sub(forwardDir);
-            if (left) moveDir.sub(rightDir);
-            if (right) moveDir.add(rightDir);
-
-            // Normalize and apply speed
-            const isMovingNow = moveDir.lengthSq() > 0;
-
-            if (isMovingNow) {
-                moveDir.normalize().multiplyScalar(speed);
-
-                // Rotate player to face movement direction (Smooth Turn)
-                const angle = Math.atan2(moveDir.x, moveDir.z);
-                const targetRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-
-                const currentRotation = rigidBody.current.rotation();
-                const currentQuat = new THREE.Quaternion(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
-
-                currentQuat.slerp(targetRotation, 15 * delta); // Smooth factor
-                rigidBody.current.setRotation(currentQuat, true);
-            }
-
-            // Apply movement (Direct velocity control for snappy feel)
-            rigidBody.current.setLinvel({ x: moveDir.x, y: linvel.y, z: moveDir.z }, true);
-
-            // Jump & Jetpack Logic
-            const isGrounded = Math.abs(linvel.y) < 0.1;
-            let isJetpacking = false;
-
-            if (jump) {
-                if (jumpHeldTime.current === 0) {
-                    // Just started pressing jump
-                    jumpedFromGround.current = isGrounded;
-                }
-                jumpHeldTime.current += delta;
-
-                if (jumpedFromGround.current) {
-                    // Started on ground: Jump then wait for Jetpack
-                    if (jumpHeldTime.current < 0.1) {
-                        // Initial Jump
-                        rigidBody.current.applyImpulse({ x: 0, y: GameConfig.playerJumpForce, z: 0 }, true);
-                    } else if (jumpHeldTime.current > 0.35) {
-                        // Jetpack (Delay 0.35s before activation)
-                        const jetpackCost = 20 * delta; // Cost per second
-                        if (consumeMana(jetpackCost)) {
-                            // Reduced Jetpack Force
-                            rigidBody.current.applyImpulse({ x: 0, y: GameConfig.jetpackForce * 0.005, z: 0 }, true);
-                            isJetpacking = true;
-                        }
-                    }
-                } else {
-                    // Started in air: Jetpack immediately
-                    const jetpackCost = 20 * delta; // Cost per second
+            if (jumpedFromGround.current) {
+                if (jumpHeldTime.current < 0.1) {
+                    rigidBody.current.applyImpulse({ x: 0, y: GameConfig.playerJumpForce, z: 0 }, true);
+                } else if (jumpHeldTime.current > 0.35) {
+                    const jetpackCost = 20 * delta;
                     if (consumeMana(jetpackCost)) {
-                        // Reduced Jetpack Force
                         rigidBody.current.applyImpulse({ x: 0, y: GameConfig.jetpackForce * 0.005, z: 0 }, true);
                         isJetpacking = true;
                     }
                 }
             } else {
-                jumpHeldTime.current = 0;
-                jumpedFromGround.current = false;
+                const jetpackCost = 20 * delta;
+                if (consumeMana(jetpackCost)) {
+                    rigidBody.current.applyImpulse({ x: 0, y: GameConfig.jetpackForce * 0.005, z: 0 }, true);
+                    isJetpacking = true;
+                }
             }
+        } else {
+            jumpHeldTime.current = 0;
+            jumpedFromGround.current = false;
+        }
 
-            // Spell Casting Logic
-            const COOLDOWN_DURATION = 0.5; // 0.5s cooldown
-            // Update Cooldown
-            if (cooldownTimer.current > 0) {
-                cooldownTimer.current -= delta;
-                // Update UI (0 to 1)
-                setSpellCooldown(Math.max(0, cooldownTimer.current / COOLDOWN_DURATION));
-            } else {
-                setSpellCooldown(0);
-            }
+        // --- SPELL COOLDOWN ---
+        if (cooldownTimer.current > 0) {
+            cooldownTimer.current -= delta;
+            setSpellCooldown(Math.max(0, cooldownTimer.current / maxCooldownRef.current));
+        } else {
+            setSpellCooldown(0);
+        }
 
-            if (fire && cooldownTimer.current <= 0) {
-                // Check Mana
-                const manaCost = 10; // Base cost
-                if (consumeMana(manaCost)) {
-                    // Reset Cooldown
-                    cooldownTimer.current = COOLDOWN_DURATION;
-                    setSpellCooldown(1);
+        // --- SPELL CASTING (Generic Data-Driven) ---
+        const tryCastSpell = (spellType: string, slot: 'primary' | 'secondary') => {
+            if (cooldownTimer.current > 0) return;
 
-                    // Cast Spell
-                    const rotation = rigidBody.current.rotation();
-                    const quaternion = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-                    const baseForward = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
-                    const spawnPos = rigidBody.current.translation();
-                    const baseCastPos = new THREE.Vector3(spawnPos.x, spawnPos.y + 0.5, spawnPos.z).add(baseForward.clone().multiplyScalar(1.5));
+            const spellConfig = SpellDefinitions[spellType as keyof typeof SpellDefinitions];
+            if (!spellConfig) return;
 
-                    const fireProjectile = (offsetDir: THREE.Vector3, delay: number = 0) => {
-                        setTimeout(() => {
+            const behavior = spellConfig.castBehavior || {};
+            const manaCost = behavior.manaCost || 10;
+            const cooldown = behavior.cooldown || 0.5;
+            const count = behavior.count || 1;
+            const spread = behavior.spread || 0;
+            const spreadType = behavior.spreadType || 'random';
+            const burstCount = behavior.burstCount || 1;
+            const burstDelay = behavior.burstDelay || 0;
+            const startOffset = behavior.startOffset || 1.5;
+
+            if (consumeMana(manaCost)) {
+                cooldownTimer.current = cooldown;
+                maxCooldownRef.current = cooldown; // Update max for UI
+                setSpellCooldown(1);
+                lastUsedSlot.current = slot;
+
+                if (!rigidBody.current) return;
+
+                // Capture initial state for the burst
+                const rotation = rigidBody.current.rotation();
+                const quaternion = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+                const baseForward = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
+                const spawnPos = rigidBody.current.translation();
+                const baseCastPos = new THREE.Vector3(spawnPos.x, spawnPos.y + 0.5, spawnPos.z).add(baseForward.clone().multiplyScalar(startOffset));
+
+                // Helper to fire a single shot
+                const fireShot = (delay: number) => {
+                    setTimeout(() => {
+                        for (let i = 0; i < count; i++) {
+                            let dir = baseForward.clone();
+
+                            // Apply Spread
+                            if (spread > 0) {
+                                if (spreadType === 'random') {
+                                    const spreadVec = new THREE.Vector3(
+                                        (Math.random() - 0.5) * (spread * 0.02), // Approx conversion to radians/vector
+                                        (Math.random() - 0.5) * (spread * 0.01),
+                                        (Math.random() - 0.5) * (spread * 0.02)
+                                    );
+                                    dir.add(spreadVec).normalize();
+                                } else {
+                                    // Linear spread (e.g. fan) - simple implementation
+                                    const angle = ((i / (count - 1 || 1)) - 0.5) * (spread * 0.01745); // Degrees to radians
+                                    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                                }
+                            }
+
                             const castData = {
-                                type: activeSpell,
+                                type: spellType,
                                 position: baseCastPos,
-                                direction: offsetDir,
+                                direction: dir,
                                 playerId: myPlayer().id,
                                 timestamp: Date.now()
                             };
                             window.dispatchEvent(new CustomEvent('cast-spell', { detail: castData }));
                             myPlayer().setState('lastCast', castData);
-                        }, delay);
-                    };
-
-                    if (activeSpell === 'magic_missile') {
-                        // 3-Round Burst
-                        fireProjectile(baseForward, 0);
-                        fireProjectile(baseForward, 100);
-                        fireProjectile(baseForward, 200);
-                    } else if (activeSpell === 'ice_shard') {
-                        // Shotgun Blast (5 shards)
-                        for (let i = 0; i < 5; i++) {
-                            const spread = new THREE.Vector3(
-                                (Math.random() - 0.5) * 0.5,
-                                (Math.random() - 0.5) * 0.2, // Less vertical spread
-                                (Math.random() - 0.5) * 0.5
-                            );
-                            const dir = baseForward.clone().add(spread).normalize();
-                            fireProjectile(dir, 0);
                         }
-                    } else {
-                        // Standard Single Shot (Fireball)
-                        fireProjectile(baseForward, 0);
-                    }
+                    }, delay);
+                };
 
-                } else {
-                    console.log("Not enough mana!");
+                // Execute Burst
+                for (let b = 0; b < burstCount; b++) {
+                    fireShot(b * burstDelay);
                 }
+            }
+        };
+
+        if (fire) {
+            tryCastSpell(primarySpell, 'primary');
+        } else if (altFire) {
+            tryCastSpell(secondarySpell, 'secondary');
+        }
+
+        // Update Anim State Ref for useFrame to pick up
+        animStateRef.current = {
+            isMoving: isMovingNow,
+            isJumping: !isGrounded,
+            isJetpacking: isJetpacking
+        };
+    });
+
+    useFrame((_, delta) => {
+        if (!rigidBody.current || !container.current) return;
+
+        if (isMe) {
+            // Sync Host Status
+            if (isHost()) {
+                player.setState('isHost', true, true);
+            }
+
+            // Wake up rigid body to ensure physics updates
+            if (rigidBody.current.isSleeping()) {
+                rigidBody.current.wakeUp();
             }
 
             // --- SYNC TO NETWORK ---
             const now = Date.now();
             if (now - lastSync.current > 50) { // 20 FPS
                 const pos = rigidBody.current.translation();
-                const rot = rigidBody.current.rotation(); // Sync body rotation now
+                const rot = rigidBody.current.rotation();
 
-                player.setState("pos", pos, true); // Reliable
-                player.setState("rot", { x: rot.x, y: rot.y, z: rot.z, w: rot.w }, true); // Sync Quaternion
-                player.setState("anim", {
-                    isMoving: isMovingNow,
-                    isJumping: !isGrounded,
-                    isJetpacking: isJetpacking
-                }, true);
+                player.setState("pos", pos, true);
+                player.setState("rot", { x: rot.x, y: rot.y, z: rot.z, w: rot.w }, true);
+                player.setState("anim", animStateRef.current, true);
+                player.setState("activeEffects", activeEffects, true);
 
                 lastSync.current = now;
             }
 
             // Update Local Anim State for rendering
-            const newAnimState = {
-                isMoving: isMovingNow,
-                isJumping: !isGrounded,
-                isJetpacking: isJetpacking
-            };
-
+            const newAnimState = animStateRef.current;
             if (newAnimState.isMoving !== animState.isMoving ||
                 newAnimState.isJumping !== animState.isJumping ||
                 newAnimState.isJetpacking !== animState.isJetpacking) {
@@ -262,36 +366,29 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
 
         } else {
             // --- REMOTE CONTROL ---
+            // (Keep existing interpolation logic)
             const pos = player.getState("pos");
             const rot = player.getState("rot");
             const anim = player.getState("anim");
 
             if (pos) {
-                // Interpolate Position
                 const currentPos = rigidBody.current.translation();
                 const vecPos = new THREE.Vector3(pos.x, pos.y, pos.z);
-
-                // Calculate approximate velocity for remote players
                 const dist = vecPos.clone().sub(new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z));
-                velocityRef.current.copy(dist).divideScalar(delta); // Approx velocity
+                velocityRef.current.copy(dist).divideScalar(delta);
 
-                // Simple Lerp for Kinematic
                 const newPos = new THREE.Vector3().lerpVectors(
                     new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z),
                     vecPos,
                     10 * delta
                 );
-
                 rigidBody.current.setNextKinematicTranslation(newPos);
             }
 
             if (rot) {
-                // Interpolate Rotation
-                // We are syncing the Body rotation now (Quaternion)
                 const targetRot = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
                 const currentRot = rigidBody.current.rotation();
                 const currentQuat = new THREE.Quaternion(currentRot.x, currentRot.y, currentRot.z, currentRot.w);
-
                 currentQuat.slerp(targetRot, 10 * delta);
                 rigidBody.current.setRotation(currentQuat, true);
             }
@@ -299,6 +396,13 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
             if (anim) {
                 setAnimState(anim);
             }
+
+            // Sync Spells
+            const pSpell = player.getState("primarySpell");
+            if (pSpell && pSpell !== primarySpell) setPrimarySpell(pSpell);
+
+            const sSpell = player.getState("secondarySpell");
+            if (sSpell && sSpell !== secondarySpell) setSecondarySpell(sSpell);
         }
     });
 
@@ -342,6 +446,9 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
                     cooldown={isMe ? spellCooldown : 0}
                     manaRatio={isMe ? mana / maxMana : 1}
                     hpRatio={isMe ? hp / maxHp : 1}
+                    leftHandColor={SpellDefinitions[secondarySpell as keyof typeof SpellDefinitions]?.color || "gray"}
+                    rightHandColor={SpellDefinitions[primarySpell as keyof typeof SpellDefinitions]?.color || "gray"}
+                    activeEffects={isMe ? activeEffects : (player.getState("activeEffects") || [])}
                 />
             </group>
         </RigidBody>

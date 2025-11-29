@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { DynamicShadow } from "../effects/DynamicShadow";
 
 interface PlayerModelProps {
     color: string;
@@ -11,6 +12,9 @@ interface PlayerModelProps {
     cooldown?: number;
     manaRatio?: number;
     hpRatio?: number;
+    leftHandColor?: string;
+    rightHandColor?: string;
+    activeEffects?: { type: string; duration: number; intensity?: number; startTime: number }[];
 }
 
 export const PlayerModel = ({
@@ -22,6 +26,9 @@ export const PlayerModel = ({
 
     manaRatio = 1,
     hpRatio = 1,
+    leftHandColor = "gray",
+    rightHandColor = "gray",
+    activeEffects = [],
 }: PlayerModelProps) => {
     const group = useRef<THREE.Group>(null);
     const bodyGroup = useRef<THREE.Group>(null);
@@ -35,8 +42,6 @@ export const PlayerModel = ({
         const time = state.clock.elapsedTime;
         const velY = velocityRef?.current?.y || 0;
 
-        // --- HOVER ANIMATION ---
-        // Base hover sine wave
         const hoverY = Math.sin(time * 3) * 0.1 + 0.8; // Hover around y=0.8
         bodyGroup.current.position.y = THREE.MathUtils.lerp(bodyGroup.current.position.y, hoverY, 0.1);
 
@@ -110,14 +115,44 @@ export const PlayerModel = ({
                 {/* Torso */}
                 <mesh position={[0, 0, 0]} castShadow receiveShadow>
                     <boxGeometry args={[0.4, 0.5, 0.3]} />
-                    <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} />
+                    <meshStandardMaterial
+                        color={(() => {
+                            if (activeEffects.some(e => e.type === 'burning')) return "#ff4400";
+                            if (activeEffects.some(e => e.type === 'frozen' || e.type === 'slow')) return "#00ffff";
+                            if (activeEffects.some(e => e.type === 'wet')) return "#0000ff";
+                            return color;
+                        })()}
+                        emissive={(() => {
+                            if (activeEffects.some(e => e.type === 'burning')) return "#ff2200";
+                            if (activeEffects.some(e => e.type === 'frozen')) return "#0088ff";
+                            return "#000000";
+                        })()}
+                        emissiveIntensity={activeEffects.length > 0 ? 1 : 0}
+                        metalness={0.8}
+                        roughness={0.2}
+                    />
                 </mesh>
 
                 {/* Head */}
                 <group position={[0, 0.45, 0]}>
                     <mesh castShadow receiveShadow>
                         <boxGeometry args={[0.3, 0.3, 0.3]} />
-                        <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} />
+                        <meshStandardMaterial
+                            color={(() => {
+                                if (activeEffects.some(e => e.type === 'burning')) return "#ff4400";
+                                if (activeEffects.some(e => e.type === 'frozen' || e.type === 'slow')) return "#00ffff";
+                                if (activeEffects.some(e => e.type === 'wet')) return "#0000ff";
+                                return color;
+                            })()}
+                            emissive={(() => {
+                                if (activeEffects.some(e => e.type === 'burning')) return "#ff2200";
+                                if (activeEffects.some(e => e.type === 'frozen')) return "#0088ff";
+                                return "#000000";
+                            })()}
+                            emissiveIntensity={activeEffects.length > 0 ? 1 : 0}
+                            metalness={0.8}
+                            roughness={0.2}
+                        />
                     </mesh>
                     {/* Visor */}
                     <mesh position={[0, 0, 0.12]}>
@@ -129,16 +164,55 @@ export const PlayerModel = ({
                         <cylinderGeometry args={[0.02, 0.02, 0.2]} />
                         <meshStandardMaterial color="gray" />
                     </mesh>
+                    {/* Antenna Light */}
+                    <mesh position={[0, 0.3, 0]}>
+                        <sphereGeometry args={[0.05, 16, 16]} />
+                        <meshStandardMaterial
+                            color={
+                                hpRatio < 0.2
+                                    ? "#ff0000" // Red when critical
+                                    : new THREE.Color().lerpColors(
+                                        new THREE.Color("#ffaa00"), // Orange at 20%
+                                        new THREE.Color("#00ffff"), // Blue at 100%
+                                        (hpRatio - 0.2) / 0.8 // Normalize 0.2-1.0 to 0-1
+                                    )
+                            }
+                            emissive={
+                                hpRatio < 0.2
+                                    ? "#ff0000"
+                                    : new THREE.Color().lerpColors(
+                                        new THREE.Color("#ffaa00"),
+                                        new THREE.Color("#00ffff"),
+                                        (hpRatio - 0.2) / 0.8
+                                    )
+                            }
+                            emissiveIntensity={
+                                hpRatio < 0.2
+                                    ? (Math.sin(Date.now() / 50) > 0 ? 5 : 0) // Fast Blink
+                                    : 2 // Constant bright
+                            }
+                        />
+                    </mesh>
                 </group>
 
                 {/* Floating Hands */}
                 <mesh ref={leftHand} castShadow>
                     <boxGeometry args={[0.15, 0.15, 0.15]} />
-                    <meshStandardMaterial color="gray" metalness={0.5} />
+                    <meshStandardMaterial
+                        color={leftHandColor}
+                        emissive={leftHandColor}
+                        emissiveIntensity={0.5}
+                        metalness={0.5}
+                    />
                 </mesh>
                 <mesh ref={rightHand} castShadow>
                     <boxGeometry args={[0.15, 0.15, 0.15]} />
-                    <meshStandardMaterial color="gray" metalness={0.5} />
+                    <meshStandardMaterial
+                        color={rightHandColor}
+                        emissive={rightHandColor}
+                        emissiveIntensity={0.5}
+                        metalness={0.5}
+                    />
                 </mesh>
 
                 {/* Jetpack */}
@@ -188,22 +262,8 @@ export const PlayerModel = ({
                         })}
                     </group>
                 </group>
-
-                {/* Status Bars (Attached to body so they hover with it) */}
-                {(hpRatio < 1) && (
-                    <group position={[0, 0.8, 0]}>
-                        {/* HP Bar */}
-                        <mesh position={[0, 0.1, 0]}>
-                            <boxGeometry args={[0.8, 0.08, 0.05]} />
-                            <meshBasicMaterial color="gray" />
-                        </mesh>
-                        <mesh position={[-(1 - hpRatio) * 0.4, 0.1, 0.01]}>
-                            <boxGeometry args={[0.8 * hpRatio, 0.08, 0.05]} />
-                            <meshBasicMaterial color="red" />
-                        </mesh>
-                    </group>
-                )}
             </group>
+            <DynamicShadow scale={1.2} opacity={0.6} />
         </group>
     );
 };

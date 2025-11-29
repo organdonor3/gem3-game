@@ -60,7 +60,10 @@ export const CameraController = () => {
 
     useFrame((_, delta) => {
         // Find the local player's object in the scene
-        const myId = myPlayer().id;
+        const player = myPlayer();
+        if (!player) return;
+
+        const myId = player.id;
         const playerObject = scene.getObjectByName(`Player-${myId}`);
 
         if (playerObject && controlsRef.current) {
