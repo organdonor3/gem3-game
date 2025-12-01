@@ -8,6 +8,7 @@ interface PlayerModelProps {
     isMoving?: boolean;
     isJumping?: boolean;
     isJetpacking?: boolean;
+    isSlapping?: boolean;
     velocityRef?: React.MutableRefObject<THREE.Vector3>;
     cooldown?: number;
     manaRatio?: number;
@@ -22,6 +23,7 @@ export const PlayerModel = ({
     isMoving,
     isJumping,
     isJetpacking,
+    isSlapping,
     velocityRef,
 
     manaRatio = 1,
@@ -99,6 +101,21 @@ export const PlayerModel = ({
             // Add slight idle sway rotation
             leftHand.current.rotation.z = Math.sin(time * 2) * 0.1;
             rightHand.current.rotation.z = -Math.sin(time * 2) * 0.1;
+
+            // --- SLAP ANIMATION ---
+            if (isSlapping) {
+                // Swing arms back and forth rapidly
+                const slapSpeed = 15;
+                const slapRange = 1.5;
+
+                // Alternate arms
+                leftHand.current.rotation.x += Math.sin(time * slapSpeed) * slapRange;
+                rightHand.current.rotation.x += Math.cos(time * slapSpeed) * slapRange;
+
+                // Move forward slightly
+                leftHand.current.position.z += Math.sin(time * slapSpeed) * 0.2;
+                rightHand.current.position.z += Math.cos(time * slapSpeed) * 0.2;
+            }
         }
 
         // --- JETPACK EFFECTS ---

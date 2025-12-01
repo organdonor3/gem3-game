@@ -43,7 +43,24 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
         }
     }, [isMe]);
 
-    const { hp, maxHp, mana, maxMana, setHp, addMana, consumeMana, spellCooldown, setSpellCooldown, activeEffects, tickEffects, addEffect, removeEffect } = useGameStore();
+    const { hp, maxHp, mana, maxMana, setHp, addMana, consumeMana, spellCooldown, setSpellCooldown, activeEffects, tickEffects, addEffect, removeEffect, spawnPoint, respawnTrigger, triggerRespawn } = useGameStore();
+
+    // Respawn Logic
+    const prevRespawnTrigger = useRef(respawnTrigger);
+    useEffect(() => {
+        if (isMe && rigidBody.current && respawnTrigger !== prevRespawnTrigger.current) {
+            rigidBody.current.setTranslation({ x: spawnPoint[0], y: spawnPoint[1], z: spawnPoint[2] }, true);
+            rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            prevRespawnTrigger.current = respawnTrigger;
+        }
+    }, [respawnTrigger, isMe, spawnPoint]); // Triggered by store action
+
+    // Auto-respawn on death (HP <= 0)
+    useEffect(() => {
+        if (isMe && hp <= 0) {
+            triggerRespawn();
+        }
+    }, [hp, isMe, triggerRespawn]);
 
     // Listen for spell changes and hits
     useEffect(() => {
@@ -122,6 +139,52 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
 
     // Input Store (only used if isMe)
     const { forward, backward, left, right, jump, fire, altFire } = useInputStore();
+    const isMiningMode = useGameStore(state => state.gameMode === 'mining');
+
+    // Slap Attack State
+    const [isSlapping, setIsSlapping] = useState(false);
+    const slapInterval = useRef<any>(null);
+
+    // Handle Slap Input
+    useEffect(() => {
+        if (!isMe || !isMiningMode) return;
+
+        if (fire) {
+            if (!isSlapping) {
+                setIsSlapping(true);
+                // Start Slapping Loop
+                const slap = () => {
+                    // Raycast forward to find Crystal
+                    if (rigidBody.current) {
+                        const origin = rigidBody.current.translation();
+                        // const rotation = rigidBody.current.rotation();
+                        // Calculate forward direction from rotation
+                        // const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w)).normalize();
+
+                        // Simple distance check to center (0,0,0) where crystal is
+                        // In a real implementation, we would use a raycast
+                        const distToCenter = Math.sqrt(origin.x * origin.x + origin.z * origin.z);
+
+                        if (distToCenter < 6) {
+                            window.dispatchEvent(new CustomEvent('mine-crystal', { detail: { playerId: player.id, damage: 10 } }));
+                        }
+                    }
+                };
+
+                slap(); // Initial slap
+                slapInterval.current = setInterval(slap, 500); // Slap every 500ms
+            }
+        } else {
+            if (isSlapping) {
+                setIsSlapping(false);
+                if (slapInterval.current) clearInterval(slapInterval.current);
+            }
+        }
+
+        return () => {
+            if (slapInterval.current) clearInterval(slapInterval.current);
+        };
+    }, [isMe, isMiningMode, fire, isSlapping]);
 
     // Sync Refs
     const lastSync = useRef(0);
@@ -442,6 +505,7 @@ export const PlayerController = ({ player }: PlayerControllerProps) => {
                     isMoving={animState.isMoving}
                     isJumping={animState.isJumping}
                     isJetpacking={animState.isJetpacking}
+                    isSlapping={isSlapping}
                     velocityRef={velocityRef} // Pass velocity ref
                     cooldown={isMe ? spellCooldown : 0}
                     manaRatio={isMe ? mana / maxMana : 1}

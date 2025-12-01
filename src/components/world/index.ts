@@ -5,3 +5,8 @@ export * from './Trampoline';
 export * from './BreakableCrate';
 export * from './ConveyorBelt';
 export * from './SpellTome';
+export * from './ManaPad';
+export * from './SpawnPillar';
+export * from './TogglePad';
+export * from './FireHazard';
+export * from './Portal';

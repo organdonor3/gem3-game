@@ -47,6 +47,38 @@ interface GameState {
 
     isMotherShipActive: boolean;
     setMotherShipActive: (active: boolean) => void;
+
+    // Game Modes
+    gameMode: 'lobby' | 'parkour' | 'collector' | 'mining';
+    setGameMode: (mode: 'lobby' | 'parkour' | 'collector' | 'mining') => void;
+
+    // Scoring
+    playerScores: Record<string, number>;
+    addPlayerScore: (playerId: string, points: number) => void;
+    resetScores: () => void;
+
+    // Mining Mode State
+    crystalFragments: number;
+    addCrystalFragments: (amount: number) => void;
+    spendCrystalFragments: (amount: number) => boolean;
+
+    crystalHealth: number;
+    maxCrystalHealth: number;
+    damageCrystal: (amount: number) => void;
+    resetCrystal: () => void;
+
+    structures: { id: string; type: 'turret' | 'sweeper_house'; position: [number, number, number]; owner: string; level: number }[];
+    addStructure: (structure: { type: 'turret' | 'sweeper_house'; position: [number, number, number]; owner: string }) => void;
+    upgradeStructure: (id: string) => void;
+
+    unlockedTech: string[];
+    unlockTech: (tech: string) => void;
+
+    // Spawn & Respawn
+    spawnPoint: [number, number, number];
+    setSpawnPoint: (point: [number, number, number]) => void;
+    respawnTrigger: number;
+    triggerRespawn: () => void;
 }
 
 export const useGameStore = create<GameState>()(
@@ -153,7 +185,52 @@ export const useGameStore = create<GameState>()(
             setMySpells: (spells) => set((state) => ({ mySpells: { ...state.mySpells, ...spells } })),
 
             isMotherShipActive: false,
-            setMotherShipActive: (active) => set({ isMotherShipActive: active })
+            setMotherShipActive: (active) => set({ isMotherShipActive: active }),
+
+            gameMode: 'lobby',
+            setGameMode: (mode) => set({ gameMode: mode }),
+
+            playerScores: {},
+            addPlayerScore: (playerId, points) => set((state) => ({
+                playerScores: {
+                    ...state.playerScores,
+                    [playerId]: (state.playerScores[playerId] || 0) + points
+                }
+            })),
+            resetScores: () => set({ playerScores: {} }),
+
+            spawnPoint: [0, 5, 0],
+            setSpawnPoint: (point) => set({ spawnPoint: point }),
+            respawnTrigger: 0,
+            triggerRespawn: () => set((state) => ({ respawnTrigger: state.respawnTrigger + 1, hp: state.maxHp })),
+
+            // Mining Mode Implementation
+            crystalFragments: 0,
+            addCrystalFragments: (amount) => set((state) => ({ crystalFragments: state.crystalFragments + amount })),
+            spendCrystalFragments: (amount) => {
+                const { crystalFragments } = get();
+                if (crystalFragments >= amount) {
+                    set({ crystalFragments: crystalFragments - amount });
+                    return true;
+                }
+                return false;
+            },
+
+            crystalHealth: 1000,
+            maxCrystalHealth: 1000,
+            damageCrystal: (amount) => set((state) => ({ crystalHealth: Math.max(0, state.crystalHealth - amount) })),
+            resetCrystal: () => set({ crystalHealth: 1000, structures: [], unlockedTech: ['turret'] }),
+
+            structures: [],
+            addStructure: (structure) => set((state) => ({
+                structures: [...state.structures, { ...structure, id: Math.random().toString(36).substr(2, 9), level: 1 }]
+            })),
+            upgradeStructure: (id) => set((state) => ({
+                structures: state.structures.map(s => s.id === id ? { ...s, level: s.level + 1 } : s)
+            })),
+
+            unlockedTech: ['turret'],
+            unlockTech: (tech) => set((state) => ({ unlockedTech: [...state.unlockedTech, tech] }))
         }),
         {
             name: 'game-storage', // unique name

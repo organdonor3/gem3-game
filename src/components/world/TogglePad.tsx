@@ -4,6 +4,7 @@ import { RigidBody, CylinderCollider } from "@react-three/rapier";
 import { Text } from "@react-three/drei";
 import * as THREE from "three";
 import { myPlayer } from "playroomkit";
+import robotoFont from '../../assets/fonts/roboto.woff';
 
 interface TogglePadProps {
     position: [number, number, number];
@@ -91,6 +92,7 @@ export const TogglePad = ({ position, settingName, value, onToggle }: TogglePadP
                     anchorY="middle"
                     outlineWidth={0.05}
                     outlineColor="black"
+                    font={robotoFont}
                 >
                     {settingName}
                     {'\n'}
